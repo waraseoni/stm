@@ -1,0 +1,33 @@
+# toolchains / SDKs: folder me rakho, git me nahi (keval README track hota hai)
+tools/*
+!tools/README.md
+vendor/*
+!vendor/README.md
+
+# build output
+build/
+out/
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.ihx
+*.map
+*.lst
+*.rel
+*.rst
+*.sym
+*.asm
+*.lk
+*.cdb
+*.adb
+*.s19
+*.srec
+
+# IDE / OS
+.vscode/
+.idea/
+*.code-workspace
+Thumbs.db
+desktop.ini
