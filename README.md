@@ -118,5 +118,9 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [ ] UART printf dono par
 - [ ] pehla interrupt (EXTI / TIM)
 
-> Status: STM8/STM32 ke source aur linker scripts likhe gaye hain; ARM GCC
-> install hone ke baad build verify hoga. STM8 template SDCC se verify hua hai.
+> Status: source, linker scripts aur build files likhe gaye hain. Is machine par
+> SDCC / ARM GCC abhi install nahi hain, isliye **compile verify pending** hai.
+> Jo verify hua: vendor headers ke asli naam/macros (`RCC_CFGR_PLLMULL9`,
+> `GPIO_ODR_OD5`, `SysTick_CTRL_*`, startup file names, include chain) aur
+> `setup-vendor.ps1` ka actual run. Pehla `cmake --build` chalane par agar koi
+> error aaye to `docs/` me note karo — scaffolding ka point yahi hai.
