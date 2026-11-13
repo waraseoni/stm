@@ -31,10 +31,30 @@
 ## Clock tree
 - F1: HSI 8 MHz, HSE 8 MHz -> PLL x9 = 72 MHz. Flash latency set karna padta hai
   (`FLASH->ACR` me `LATENCY`) — bina iske 72 MHz par crash/instability.
-- F4: HSE 8 MHz -> PLL -> 84/168 MHz. `PWR->CR` me VOS, `FLASH->ACR` latency,
-  APB prescalers (APB1 max 42 MHz on F4!).
+- F4: HSE 8 MHz -> PLL -> 84/168/180 MHz. `PWR->CR` me VOS, `FLASH->ACR` latency,
+  APB prescalers (APB1 max 42 MHz on F4, 45 MHz on F446 at VOS1!). F446 par
+  168 MHz se upar **overdrive** (`PWR->CR` ODEN/ODSWRDY) chahiye.
 - Baud rate TIM/peripheral clocks se calculate hota hai — clock badla to baud
   dobara check karo.
+
+### Ready-made recipes (khud verify karo, RM table se)
+
+| Target | Board | PLL | Flash latency | Extra |
+|---|---|---|---|---|
+| 72 MHz | F103 | HSE 8 x9 | 2 WS + prefetch | APB1 /2 (36 MHz) |
+| 84 MHz | F411 | HSI 16 /16 x336 /4 | 2 WS | VOS1 default |
+| 100 MHz | F411 | HSI 16 /16 x400 /4 | 3 WS | VOS1, APB1 /2 |
+| 168 MHz | F446 | HSI 16 /16 x336 /2 | 5 WS | VOS1, APB1 /4 |
+| 180 MHz | F446 | HSI 16 /16 x360 /2 | 5 WS | **VOS0 + overdrive**, APB1 /4 |
+
+**Order har jagah same**: voltage scale / VOS -> flash latency -> prescalers ->
+PLL on -> wait PLLRDY -> switch SYSCLK -> `SystemCoreClock` update.
+Ye order galat kiya to board hang/random-fault karta hai, aur reason samajhna
+mushkil hota hai.
+
+> Hamare bare-metal templates me apna minimal `system_stm32f*.c` hai (reset par
+> kuch nahi karta). CubeMX/HAL project me ST ka system file use hota hai jo khud
+> PLL set karta hai — dono ko mix mat karo.
 
 ## Interrupts / NVIC
 - Vector table `startup_*.s` me; naam CMSIS headers me (`TIM2_IRQHandler`).

@@ -10,7 +10,7 @@ if (-not (Get-Command $sdcc -ErrorAction SilentlyContinue)) {
     throw "sdcc PATH me nahi hai. docs/00-setup-windows.md dekho."
 }
 
-& $sdcc -mstm8 --std-c99 --opt-code-speed -o blink.ihx main.c
+& $sdcc -mstm8 --std-c99 --opt-code-speed --out-fmt-ihx -o blink.ihx main.c
 if ($LASTEXITCODE -ne 0) { throw "build fail (exit $LASTEXITCODE)" }
 Write-Host "OK -> blink.ihx" -ForegroundColor Green
 

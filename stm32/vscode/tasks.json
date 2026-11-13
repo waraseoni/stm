@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "stm32: configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--preset", "${input:preset}"],
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "stm32: build",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build"],
+      "problemMatcher": ["$gcc"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "stm32: flash",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "build", "--target", "flash"],
+      "problemMatcher": [],
+      "dependsOn": "stm32: build"
+    },
+    {
+      "label": "stm32: size",
+      "type": "shell",
+      "command": "arm-none-eabi-size",
+      "args": ["build/app.elf"],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "preset",
+      "type": "pickString",
+      "description": "CMake preset (board)",
+      "options": ["debug", "release", "f411re", "f446re"],
+      "default": "debug"
+    }
+  ]
+}

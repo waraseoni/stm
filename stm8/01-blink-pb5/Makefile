@@ -4,7 +4,7 @@ TARGET  ?= blink
 SRC     ?= main.c
 
 CC      ?= sdcc
-CFLAGS  ?= -mstm8 --std-c99 --opt-code-speed
+CFLAGS  ?= -mstm8 --std-c99 --opt-code-speed --out-fmt-ihx
 FLASHER ?= stm8flash
 STLINK  ?= stlinkv2
 
