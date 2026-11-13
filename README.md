@@ -15,13 +15,22 @@ stm-dev/
 │  ├─ 02-stm32-notes.md
 │  └─ resources.md
 ├─ stm8/                  <- STM8 projects (SDCC + stm8flash)
-│  └─ 01-blink-pb5/
+│  ├─ common.mk           <- shared build rules
+│  ├─ 01-blink-pb5/       <- GPIO blink
+│  ├─ 02-tim4-interrupt/  <- timer ISR + vector 25
+│  ├─ 03-uart-printf/     <- UART1 TX
+│  └─ 04-uart-echo/       <- UART1 RX interrupt + ring buffer
 ├─ stm32/                 <- STM32 bare-metal projects (CMake + GCC + OpenOCD)
+│  ├─ common/             <- shared cmake function, system files, linker scripts
 │  ├─ cmake/              <- ARM toolchain file (dono boards ke liye)
 │  ├─ vscode/             <- launch.json / tasks.json templates
 │  ├─ docs/cubeide-workflow.md
 │  ├─ 01-f103-blink/      <- Blue Pill, 72 MHz, CMSIS only
-│  └─ 02-f4-blink/        <- Nucleo-F411RE / F446RE
+│  ├─ 02-f4-blink/        <- Nucleo-F411RE / F446RE
+│  ├─ 03-clock-pll/       <- F4 84 / 180 MHz, VOS + overdrive
+│  ├─ 04-uart-printf/     <- USART2 + _write retarget
+│  ├─ 05-uart-ringbuffer/ <- RX ISR + ring buffer
+│  └─ 06-tim-pwm/         <- TIM2 CH1 PWM fade
 ├─ study/                 <- vendor examples ko copy karke annotate karne ke liye
 ├─ tools/   (gitignored)  <- portable toolchains, flashers, drivers
 └─ vendor/  (gitignored)  <- CMSIS headers, Cube packages, datasheets
@@ -110,17 +119,18 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 ## Progress
 
 - [x] Workspace scaffold + docs
-- [x] STM8 blink template (`stm8/01-blink-pb5`)
-- [x] STM32 blink template: F103 + F4 (Nucleo)
+- [x] STM8: blink, TIM4 interrupt, UART TX, UART RX echo (4 exercises)
+- [x] STM32: F103 + F4 blink, PLL, UART printf, RX ring buffer, PWM (6 exercises)
+- [x] Shared build layer (`stm32/common`, `stm8/common.mk`) + vendor script
 - [ ] Toolchains installed + versions doc me likhe
-- [ ] STM8 blink board par chalaya
-- [ ] STM32 blink board par chalaya
-- [ ] UART printf dono par
-- [ ] pehla interrupt (EXTI / TIM)
+- [ ] Board par pehla flash + UART output
+- [ ] `07-exti-button` (STM32 EXTI + debounce)
 
 > Status: source, linker scripts aur build files likhe gaye hain. Is machine par
 > SDCC / ARM GCC abhi install nahi hain, isliye **compile verify pending** hai.
 > Jo verify hua: vendor headers ke asli naam/macros (`RCC_CFGR_PLLMULL9`,
-> `GPIO_ODR_OD5`, `SysTick_CTRL_*`, startup file names, include chain) aur
-> `setup-vendor.ps1` ka actual run. Pehla `cmake --build` chalane par agar koi
-> error aaye to `docs/` me note karo — scaffolding ka point yahi hai.
+> `GPIO_ODR_OD5`, `SysTick_CTRL_*`, `USART2_IRQn`, `TIM_CCMR1_OC1M_2`,
+> `PWR_CR_ODEN`/`PWR_CSR_ODSWRDY`, `FLASH_ACR_LATENCY_5WS`), startup file names,
+> include chain, STM8 base addresses/vector numbers (SPL source + datasheet),
+> aur `setup-vendor.ps1` ka actual run. Pehla `cmake --build` / `make` chalane
+> par agar koi error aaye to `docs/` me note karo — scaffolding ka point yahi hai.

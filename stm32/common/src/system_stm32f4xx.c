@@ -1,12 +1,12 @@
 /*
- * Minimal system_stm32f4xx.c -- apna version (ST wale ki jagah).
+ * Minimal system_stm32f4xx.c -- shared by all F4 projects in this workspace.
  *
  * ST ka original reset par PLL config karta hai (HSE 8 MHz par depend karta hai).
  * Yahan sirf wo cheezein hain jo Cortex-M4 ko chahiye:
  *   1. FPU enable (CP10/CP11)  -- warna float instructions fault karte hain
  *   2. VTOR flash par
  *
- * Clock HSI 16 MHz hi rehti hai; PLL `03-clock-pll` exercise me.
+ * Clock setup project ke main.c me hota hai (03-clock-pll me PLL).
  */
 
 #include "stm32f4xx.h"

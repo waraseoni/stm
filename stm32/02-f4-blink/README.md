@@ -22,7 +22,7 @@ cmake --build build --target flash
 ```
 
 Nucleo par onboard ST-Link hai, alag flasher nahi chahiye. `flash` target OpenOCD
-use karta hai (`openocd-f4.cfg`).
+use karta hai (`build/openocd.cfg`, configure par auto-generate hota hai).
 
 ## F1 se F4 ka difference (yahi is project ka point hai)
 
@@ -51,7 +51,8 @@ use karta hai (`openocd-f4.cfg`).
 - [ ] F411 par PLL 84 MHz khud set karo: HSI/16 * 336 / 4. Kya FLASH latency
       chahiye? (RM0090 FLASH table dekho — 84 MHz = 2 WS)
 - [ ] Dono boards par same `main.c` chalta hai — kya sirf linker script aur
-      `DEVICE_DEF` badalne se kaam ho jata hai? (haan, aur yahi CMSIS ka fayda hai)
+      `BOARD` / device define badalne se kaam ho jata hai? (haan, aur yahi CMSIS
+      ka fayda hai)
 
 ## Common problems
 

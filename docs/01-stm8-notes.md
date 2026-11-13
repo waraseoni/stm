@@ -30,12 +30,17 @@ Sequence: `DDR |= mask` -> `CR1 |= mask` -> `ODR ^= mask`.
 ## SDCC specifics (STM8)
 ```c
 __at(0x5005) volatile unsigned char PB_ODR;   // absolute register
-void tim4_isr(void) __interrupt(23) { ... }   // vector number datasheet se lo
+void tim4_isr(void) __interrupt(23) { ... }   // TIM4: datasheet 25 - 2
 __critical { ... }                            // interrupts band (short only)
 ```
 - Build: `sdcc -mstm8 --std-c99 --opt-code-speed main.c` -> `.ihx`
 - Vector numbers har part me alag ho sakte hain — datasheet ka "interrupt vector
-  table" hi source of truth hai (reset = 0).
+  table" hi source of truth hai.
+- **SDCC offset:** `__interrupt(n)` me datasheet ka number **2 kam** hota hai
+  (SDCC TLI ko `int0` ginta hai; reset/trap alag). Examples: TIM4 25 -> 23,
+  UART1 RX 19 -> 17, EXTI PORTB 6 -> 4, ADC1 24 -> 22.
+- TIM4 ke registers STM8S103/003 par shift hain (CR1 ke baad 2 reserved bytes):
+  `CR1 0x5340, IER 0x5343, SR1 0x5344, EGR 0x5345, CNTR 0x5346, PSCR 0x5347, ARR 0x5348`.
 - `int` 16-bit hai. 32-bit/float avoid karo jab tak zaroori na ho (code size).
 - `volatile` bhoolna = optimizer register write hata dega. Silent bug.
 

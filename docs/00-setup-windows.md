@@ -27,8 +27,8 @@ Install hone ke baad versions yahin neeche likh do — debugging me kaam aata ha
 
 ```powershell
 cd stm8\01-blink-pb5
-make            # ya: .\build.ps1
-make flash      # ya: .\build.ps1 -Flash
+make            # build -> 01-blink-pb5.ihx
+make flash      # stm8flash se flash + verify
 ```
 
 ## 2. STM32 track (bare-metal, recommended)

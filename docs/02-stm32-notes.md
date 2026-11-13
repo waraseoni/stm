@@ -62,6 +62,21 @@ mushkil hota hai.
 - Handler me `SR` flag clear karna **zaroori** — warna infinite re-entry.
 - Keep ISR chhota: flag set karo, kaam `main` loop me.
 
+## UART / ST-Link VCP (printf ka rasta)
+
+| Board | UART | TX | RX | AF | Note |
+|---|---|---|---|---|---|
+| Nucleo-F411RE / F446RE | USART2 | PA2 | PA3 | AF7 | onboard ST-Link VCP, koi wire nahi |
+| Blue Pill | USART1 | PA9 | PA10 | fixed | `printf` ke liye USB-UART converter |
+| Blue Pill (alt) | USART2 | PA2 | PA3 | fixed | `AFIO_MAPR` remap nahi chahiye |
+
+- F4 par `GPIOA->AFR[0]` me AF number 7 likhna padta hai; F1 par AF fixed hota hai
+  (sirf `CRH` me `MODE=10, CNF=10` = AF push-pull).
+- `BRR = PCLK / baud` (OVER8=0). PLL on karne ke baad `PCLK1` badalta hai —
+  baud dobara calculate karo, warna garbage.
+- Nucleo par VCP ka RX/TX ST-Link ke through aata hai; board ko USB se hi power
+  do, alag USB-UART ki zaroorat nahi.
+
 ## SysTick / timing
 - `SysTick_Config(SystemCoreClock/1000)` -> 1 ms tick. Delay/`millis()` isi par.
 - `volatile uint32_t ticks;` handler me badhao, warna optimizer cache kar lega.
