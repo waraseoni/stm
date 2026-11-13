@@ -47,12 +47,12 @@ BRR2 = UART_DIV & 0x0F = 0x0B
 
 SDCC ka `printf` (integer only) ~2-3 KB leta hai, `%f` ke saath 4+ KB. 8 KB
 flash par ye 50% budget hai. Isliye `uart_putc` / `uart_puts` / `uart_putu`.
-Zaroorat pade to `--opt-code-size` ke saath `printf` add karke size compare karo:
+Zaroorat pade to `--opt-code-size` ke saath `printf` add karke size compare karo.
 
-```powershell
-arm-none-eabi-size   # nahi, ye ARM ka hai
-```
-SDCC ka size `.map`/`.ihx` se dekho — ya `sdobjcopy`/`makebin` se binary banao.
+Size dekhne ke tareeke (SDCC):
+- `main.map` — linker ka map, section-wise addresses + sizes.
+- `makebin -p main.ihx main.bin` — Intel HEX se raw binary (SDCC utils me aata hai).
+- Dono builds ka `.ihx`/`.bin` size compare karo (`Get-Item main.ihx`).
 
 ## Khud try karo
 
@@ -61,7 +61,7 @@ SDCC ka size `.map`/`.ihx` se dekho — ya `sdobjcopy`/`makebin` se binary banao
 - [ ] `uart_putu` ko `%04u` jaisa zero-padded banao.
 - [ ] `delay_ms` ko TIM4 tick (02) se replace karo — ab exact 1 s.
 - [ ] `printf` version banao aur flash usage compare karo (`.map` file).
-- [ ] UART1 TX interrupt (vector 20) se non-blocking TX banao.
+- [ ] UART1 TX interrupt se non-blocking TX banao (datasheet 20 -> SDCC `__interrupt(18)`).
 
 ## Common problems
 
