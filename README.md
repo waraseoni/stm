@@ -31,6 +31,7 @@ stm-dev/
 │  ├─ 04-uart-printf/     <- USART2 + _write retarget
 │  ├─ 05-uart-ringbuffer/ <- RX ISR + ring buffer
 │  └─ 06-tim-pwm/         <- TIM2 CH1 PWM fade
+├─ sim/                   <- stmlab: STM32 simulator + IC read/write CLI
 ├─ study/                 <- vendor examples ko copy karke annotate karne ke liye
 ├─ tools/   (gitignored)  <- portable toolchains, flashers, drivers
 └─ vendor/  (gitignored)  <- CMSIS headers, Cube packages, datasheets
@@ -66,6 +67,11 @@ cd ..\..
 .\setup-vendor.ps1
 cd stm32\01-f103-blink
 cmake --preset debug ; cmake --build build ; cmake --build build --target flash
+
+# 4) Simulator (bina hardware/ARM GCC ke demo)
+cd ..\..
+python -m pip install -r sim\requirements.txt
+$env:PYTHONPATH="$PWD\sim"; python -m stmlab demo --trace
 ```
 
 ## Learning path
@@ -122,9 +128,11 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [x] STM8: blink, TIM4 interrupt, UART TX, UART RX echo (4 exercises)
 - [x] STM32: F103 + F4 blink, PLL, UART printf, RX ring buffer, PWM (6 exercises)
 - [x] Shared build layer (`stm32/common`, `stm8/common.mk`) + vendor script
+- [x] `sim/stmlab`: Unicorn-based STM32 simulator (UART/GPIO/SysTick/NVIC basics) + IC read/write CLI (OpenOCD/stm8flash/sim)
 - [ ] Toolchains installed + versions doc me likhe
 - [ ] Board par pehla flash + UART output
 - [ ] `07-exti-button` (STM32 EXTI + debounce)
+- [ ] Simulator ko real ELF builds se verify (ARM GCC chahiye) + aur peripherals (EXTI/DMA/ADC...)
 
 > Status: source, linker scripts aur build files likhe gaye hain. Is machine par
 > SDCC / ARM GCC abhi install nahi hain, isliye **compile verify pending** hai.

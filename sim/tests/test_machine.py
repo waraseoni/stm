@@ -1,0 +1,162 @@
+"""Self tests for the Unicorn machine and the chip back-ends.
+
+Run from the repository root:
+
+    python -m unittest discover -s sim/tests -t sim -v
+"""
+
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from stmlab import mini                                    # noqa: E402
+from stmlab.boards import get_board                        # noqa: E402
+from stmlab.ic import IcError, SimBackend                  # noqa: E402
+from stmlab.machine import Machine                         # noqa: E402
+
+
+def load(board_name, program):
+    board = get_board(board_name)
+    segments, entry, symbols = program(board)
+    machine = Machine(board_name, trace=False)
+    machine.load_raw(segments, entry, sp=board.ram_end, symbols=symbols)
+    return machine, board, symbols
+
+
+class DemoTest(unittest.TestCase):
+    def _check_demo(self, board_name, ms=250):
+        machine, board, symbols = load(board_name, mini.build_demo)
+        machine.run_ms(ms)
+        self.assertFalse(machine.halted, machine.stop_reason)
+        self.assertIn("Hi from stmlab", machine.uart_text)
+        ticks = machine.read(symbols["tick_counter"], 4)
+        self.assertGreater(ticks, ms // 2, "SysTick handler nahi chala")
+        self.assertGreater(len(machine.led_events), 5, "LED toggle nahi hua")
+        # SysTick pending bit handler ke baad khatam hona chahiye
+        self.assertNotIn(15, machine.pending)
+        return machine
+
+    def test_demo_f411re(self):
+        machine = self._check_demo("f411re")
+        self.assertIn(machine.registers()["sp"], (
+            get_board("f411re").ram_end - 32,
+            get_board("f411re").ram_end,
+        ))
+
+    def test_demo_f446re(self):
+        self._check_demo("f446re")
+
+    def test_demo_f103c8(self):
+        self._check_demo("f103c8", ms=200)
+
+    def test_reset_clears_run_state(self):
+        machine, board, symbols = load("f411re", mini.build_demo)
+        machine.run_ms(50)
+        self.assertGreater(machine.icount, 0)
+        machine.reset()
+        self.assertEqual(machine.icount, 0)
+        self.assertEqual(machine.uart_text, "")
+        self.assertEqual(machine.read(symbols["tick_counter"], 4), 0)
+        self.assertEqual(machine.pc(), board.flash_base + mini.CODE_OFFSET)
+
+
+class UartRxTest(unittest.TestCase):
+    def test_rx_interrupt_echo(self):
+        machine, board, symbols = load("f411re", mini.build_uart_echo)
+        buf = symbols["rx_buffer"]
+        machine.run_ms(5)
+        self.assertFalse(machine.halted, machine.stop_reason)
+
+        machine.inject_uart_rx(ord("A"))
+        machine.run_ms(5)
+        machine.inject_uart_rx(ord("B"))
+        machine.run_ms(5)
+
+        self.assertEqual(machine.read(buf, 1), 2, "RX counter update nahi hua")
+        self.assertEqual(machine.read(buf + 1, 1), ord("A"))
+        self.assertEqual(machine.read(buf + 2, 1), ord("B"))
+        self.assertEqual(machine.uart_text, "AB")
+        self.assertFalse(machine.usart.rx_pending)
+
+    def test_rx_pending_when_nvic_disabled(self):
+        """IRQ pending rehta hai jab tak firmware NVIC me enable na kare."""
+        machine, board, symbols = load("f411re", mini.build_uart_echo)
+        machine.run_ms(2)
+        machine.nvic_enabled = 0                    # firmware ne enable kar diya tha
+        machine.inject_uart_rx(ord("Z"))
+        self.assertIn(38, machine.pending)
+        machine.run_ms(2)
+        self.assertIn(38, machine.pending, "disabled IRQ execute ho gaya")
+        self.assertEqual(machine.read(symbols["rx_buffer"], 1), 0)
+
+        machine.nvic_enabled |= 1 << 38             # ab enable karo
+        machine.run_ms(2)
+        self.assertEqual(machine.read(symbols["rx_buffer"], 1), 1)
+        self.assertEqual(machine.read(symbols["rx_buffer"] + 1, 1), ord("Z"))
+
+
+class PeripheralModelTest(unittest.TestCase):
+    def test_rcc_ready_flags(self):
+        machine = Machine("f411re", trace=False)
+        # HSE on -> HSERDY, PLL on -> PLLRDY (firmware ke wait loops ke liye)
+        machine.poke(0x40023800, 4, 0x00010000)
+        self.assertTrue(machine.peek(0x40023800, 4) & (1 << 17))
+        machine.poke(0x40023800, 4, 0x01000000)
+        self.assertTrue(machine.peek(0x40023800, 4) & (1 << 25))
+
+    def test_gpio_odr_and_bsrr(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x40020014, 4, 0x20)             # ODR PA5
+        self.assertEqual(machine.peek(0x40020018, 4), 0)  # BSRR reads as 0
+        self.assertEqual(machine.led_state, 1)
+        machine.poke(0x40020018, 4, 1 << 21)          # BSRR reset PA5
+        self.assertEqual(machine.led_state, 0)
+
+    def test_systick_countflag(self):
+        machine = Machine("f411re", trace=False)
+        # ek `b .` loop chahiye warna CPU 0x00000000 par fetch error deta hai
+        machine.load_raw([(0x08000000, b"\xfe\xe7")], 0x08000000)
+        machine.poke(0xE000E014, 4, 9)                 # LOAD
+        machine.poke(0xE000E018, 4, 0)                 # VAL
+        machine.poke(0xE000E010, 4, 5)                 # ENABLE | CLKSOURCE
+        machine.run_instructions(100)
+        self.assertTrue(machine.peek(0xE000E010, 4) & (1 << 16))
+        # COUNTFLAG read par clear ho jata hai
+        self.assertFalse(machine.peek(0xE000E010, 4) & (1 << 16))
+
+    def test_pwm_ccr_tracking(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x4000002C, 4, 999)               # TIM2 ARR
+        machine.poke(0x40000034, 4, 250)               # CCR1
+        self.assertAlmostEqual(machine.tim.duty(), 0.25, places=3)
+        self.assertEqual(machine.pwm_events[-1][1], 250)
+
+
+class SimBackendTest(unittest.TestCase):
+    def test_read_write_dump_load(self):
+        backend = SimBackend("f411re")
+        backend.write(0x20000100, 0xDEADBEEF)
+        self.assertEqual(backend.read(0x20000100, 2), [0xDEADBEEF, 0])
+        backend.write(0x20000104, 0x1234, size=2)
+        self.assertEqual(backend.read(0x20000104, 1, size=2), [0x1234])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "dump.bin")
+            backend.dump(0x20000100, 8, path)
+            self.assertEqual(os.path.getsize(path), 8)
+            backend.write(0x20000100, 0)
+            backend.load(path, 0x20000100)
+            self.assertEqual(backend.read(0x20000100, 1), [0xDEADBEEF])
+
+    def test_stm8_write_is_rejected(self):
+        from stmlab.ic import Stm8FlashBackend
+
+        backend = Stm8FlashBackend.__new__(Stm8FlashBackend)
+        with self.assertRaises(IcError):
+            backend.write(0x8000, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

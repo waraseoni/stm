@@ -1,0 +1,1 @@
+"""stmlab self tests."""

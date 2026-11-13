@@ -25,6 +25,10 @@ out/
 *.s19
 *.srec
 
+# Python
+__pycache__/
+*.py[cod]
+
 # IDE / OS
 .vscode/
 .idea/
