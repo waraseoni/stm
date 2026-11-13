@@ -23,6 +23,15 @@ python -m stmlab <command>
 .\sim\stmlab.cmd <command>
 ```
 
+## GUI (click-and-run, no command line)
+
+Beginners ke liye ek Tkinter GUI bhi hai - double-click karo, command nahi chahiye.
+
+- Desktop par **"stmlab GUI"** shortcut (auto-created) ya `sim\stmlab-gui.cmd` double-click karo.
+- Ya manually: `$env:PYTHONPATH="C:\next-vtech\stm-dev\sim"; python -m stmlab.gui`
+- Tabs: **Simulator** (board/ELF load, Run/Step/Reset, UART output, peek/poke, RX inject) aur **IC Read/Write** (sim/openocd/stm8flash backend, read/write/dump/load/info/reset).
+- Sab heavy kaam background thread me hota hai, UI hang nahi hota.
+
 ## Simulator
 
 ### Quick demo (no ARM toolchain needed)

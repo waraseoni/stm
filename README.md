@@ -128,7 +128,7 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [x] STM8: blink, TIM4 interrupt, UART TX, UART RX echo (4 exercises)
 - [x] STM32: F103 + F4 blink, PLL, UART printf, RX ring buffer, PWM (6 exercises)
 - [x] Shared build layer (`stm32/common`, `stm8/common.mk`) + vendor script
-- [x] `sim/stmlab`: Unicorn-based STM32 simulator (UART/GPIO/SysTick/NVIC basics) + IC read/write CLI (OpenOCD/stm8flash/sim)
+- [x] `sim/stmlab`: Unicorn-based STM32 simulator (UART/GPIO/SysTick/NVIC basics) + IC read/write CLI (OpenOCD/stm8flash/sim) + Tkinter GUI (click-and-run)
 - [ ] Toolchains installed + versions doc me likhe
 - [ ] Board par pehla flash + UART output
 - [ ] `07-exti-button` (STM32 EXTI + debounce)
