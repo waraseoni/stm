@@ -1,5 +1,6 @@
 """Unicorn-based Cortex-M machine with just enough STM32 peripherals."""
 
+import os
 import struct
 from collections import deque
 
@@ -501,11 +502,15 @@ class Machine:
         # Ties broken by IRQ number.
         irq = min(candidates, key=lambda i: (self.nvic_priorities.get(i, 0), i))
         self.pending.discard(irq)
-        vector = self.read_u32(self.vtor + 4 * irq)
+        if irq == SYSTICK_IRQ:
+            vec_index = SYSTICK_IRQ
+        else:
+            vec_index = 16 + irq
+        vector = self.read_u32(self.vtor + 4 * vec_index)
         if vector in (0, 0xFFFFFFFF):
             raise MachineError(
                 "IRQ %d ka vector 0x%08x par 0 hai (VTOR=0x%08x)"
-                % (irq, self.vtor + 4 * irq, self.vtor)
+                % (irq, self.vtor + 4 * vec_index, self.vtor)
             )
         frame = [
             self.uc.reg_read(UC_ARM_REG_R0),

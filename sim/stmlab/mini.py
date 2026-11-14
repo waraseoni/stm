@@ -245,7 +245,7 @@ echo_wait:
     code_addr = board.flash_base + CODE_OFFSET
     segments = [
         (board.flash_base,
-         _vector_table(board, code_addr, {board.usart_irq: handler_addr})),
+         _vector_table(board, code_addr, {16 + board.usart_irq: handler_addr})),
         (code_addr, _asm(body, code_addr)),
         (handler_addr, _asm(handler, handler_addr)),
     ]
