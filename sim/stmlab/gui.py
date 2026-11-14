@@ -31,6 +31,15 @@ try:
 except Exception:  # noqa: BLE001
     HAS_SVTTK = False
 
+try:
+    import matplotlib
+    matplotlib.use("TkAgg")
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from matplotlib.figure import Figure
+    HAS_MPL = True
+except Exception:  # noqa: BLE001
+    HAS_MPL = False
+
 
 WIRING = {
     "f411re": """Nucleo-F411RE / F446RE  (onboard ST-Link, no extra wiring for SWD)
@@ -285,6 +294,8 @@ class SimTab(BusyMixin):
         ttk.Label(r, textvariable=self.peek_result).pack(side="left", padx=8)
         ttk.Button(r, text="Dump 64B", command=self.dump_range).pack(side="left", padx=4)
         ttk.Button(r, text="Plot LED", command=self.plot_led).pack(side="left", padx=4)
+        if HAS_MPL:
+            ttk.Button(r, text="Plot (mpl)", command=self.plot_mpl).pack(side="left", padx=4)
         ttk.Button(r, text="Memory Editor", command=self.memory_editor).pack(side="left", padx=4)
 
         r2 = ttk.Frame(pp); r2.pack(fill="x", pady=2)
@@ -489,6 +500,34 @@ class SimTab(BusyMixin):
                 val = 0
             self.watch_tree.insert("", "end", values=(label, "0x%08x" % addr, "0x%08x" % val))
 
+    def plot_mpl(self):
+        if not self._need_machine():
+            return
+        if not HAS_MPL:
+            messagebox.showinfo("stmlab", "matplotlib not installed. pip install matplotlib")
+            return
+        events = list(self.machine.led_events)
+        top = tk.Toplevel(self.root)
+        top.title("LED / PWM plots")
+        fig = Figure(figsize=(7, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        if events:
+            xs = [e[0] for e in events]
+            ys = [e[1] for e in events]
+            ax.step(xs, ys, where="post", label="LED state")
+        pwm = list(self.machine.pwm_events)
+        if pwm:
+            px = [e[0] for e in pwm]
+            py = [e[1] for e in pwm]
+            ax.plot(px, py, "r.-", label="PWM CCR1")
+        ax.set_xlabel("icount")
+        ax.set_ylabel("value")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        canvas = FigureCanvasTkAgg(fig, master=top)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
     def _resolve_addr(self, text):
         text = text.strip()
         try:
@@ -682,6 +721,9 @@ class SimTab(BusyMixin):
                s["led_toggles"], s["pending_irq"],
                s["halted"], s["stop_reason"])
         )
+        src = self.machine.source_at(s["pc"]) if self.machine is not None else None
+        if src:
+            text += "\nsource: %s:%d" % src
         self.status_text.set(text)
 
     def refresh_uart(self):
