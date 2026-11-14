@@ -1157,6 +1157,10 @@ class HardwareTab(BusyMixin):
             ttk.Label(self.frame, text="pyserial not installed -> port auto-detect disabled. "
                                        "Install: pip install pyserial",
                       foreground="#b7791f").pack(anchor="w", pady=2)
+        ttk.Label(self.frame, text="Note: ST-Link V2 is NOT a COM port. It uses USB (WinUSB/libusb) and "
+                                   "OpenOCD talks to it. Install ST-Link driver (or Zadig WinUSB) if "
+                                   "'Test connection' fails. Serial ports above are for UART (printf), not SWD.",
+                  foreground="#555", wraplength=900, justify="left").pack(anchor="w", pady=2)
 
         # ---- wiring diagram ----
         wd = ttk.LabelFrame(self.frame, text="Wiring diagram", padding=6)
