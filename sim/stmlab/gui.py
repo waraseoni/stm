@@ -181,6 +181,7 @@ class SimTab(BusyMixin):
         self.poke_size = tk.StringVar(value="4")
         self.rx_text = tk.StringVar()
         self.bp_text = tk.StringVar()
+        self.until_text = tk.StringVar()
 
         self.busy_widgets = []
 
@@ -282,6 +283,11 @@ class SimTab(BusyMixin):
         ttk.Entry(r4, textvariable=self.bp_text, width=24).pack(side="left", padx=4)
         ttk.Button(r4, text="Run to BP", command=self.run_to_bp).pack(side="left", padx=4)
 
+        r5 = ttk.Frame(pp); r5.pack(fill="x", pady=2)
+        ttk.Label(r5, text="Run until UART contains:").pack(side="left")
+        ttk.Entry(r5, textvariable=self.until_text, width=24).pack(side="left", padx=4)
+        ttk.Button(r5, text="Run until text", command=self.run_until_text).pack(side="left", padx=4)
+
     def run_to_bp(self):
         if not self._need_machine():
             return
@@ -317,6 +323,33 @@ class SimTab(BusyMixin):
                 toast(self.root, "Halted: %s" % self.machine.stop_reason, "warning")
             else:
                 toast(self.root, "BP not hit (ran %d instr)" % steps, "warning")
+
+        self.run_busy(work, on_done=done)
+
+    def run_until_text(self):
+        if not self._need_machine():
+            return
+        target = self.until_text.get()
+        if not target:
+            messagebox.showinfo("stmlab", "Target text enter karo.")
+            return
+
+        def work():
+            steps = 0
+            max_instr = 50_000_000
+            while not self.machine.halted and target not in self.machine.uart_text and steps < max_instr:
+                self.machine.run_instructions(2000)
+                steps += 2000
+            return steps
+
+        def done(steps):
+            self._after_run()
+            if target in self.machine.uart_text:
+                toast(self.root, "Text found: %r" % target, "success")
+            elif self.machine.halted:
+                toast(self.root, "Halted: %s" % self.machine.stop_reason, "warning")
+            else:
+                toast(self.root, "Text not found (ran %d instr)" % steps, "warning")
 
         self.run_busy(work, on_done=done)
 
