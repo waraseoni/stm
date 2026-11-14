@@ -97,6 +97,7 @@ class Machine:
         self._entry = 0
         self._sp = 0
         self.symbols = {}
+        self.elf_path = None
 
     # -- setup ---------------------------------------------------------
     def _map_regions(self):
@@ -163,6 +164,7 @@ class Machine:
         self._image = list(image.segments)
         self._entry = image.entry & ~1
         self.symbols = dict(image.symbols)
+        self.elf_path = os.fspath(path)
         self._load_segments()
         sp = self.read_u32(self.board.flash_base)
         if sp == 0 or sp == 0xFFFFFFFF:
@@ -265,6 +267,15 @@ class Machine:
 
     def symbol(self, name):
         return self.symbols.get(name)
+
+    def source_at(self, addr):
+        if not self.elf_path:
+            return None
+        try:
+            from .elf import source_location
+            return source_location(self.elf_path, addr)
+        except Exception:  # noqa: BLE001
+            return None
 
     @property
     def core_hz(self):

@@ -62,6 +62,24 @@ class DemoTest(unittest.TestCase):
         self.assertEqual(machine.read(symbols["tick_counter"], 4), 0)
         self.assertEqual(machine.pc(), board.flash_base + mini.CODE_OFFSET)
 
+    def test_snapshot_roundtrip(self):
+        import os, tempfile
+        machine, board, symbols = load("f411re", mini.build_demo)
+        machine.run_ms(30)
+        path = os.path.join(tempfile.gettempdir(), "snap_roundtrip.snap")
+        machine.save_snapshot(path)
+        machine2 = Machine("f411re", trace=False)
+        machine2.load_snapshot(path)
+        self.assertEqual(machine.icount, machine2.icount)
+        self.assertEqual(machine.uart_text, machine2.uart_text)
+        self.assertEqual(machine.led_state, machine2.led_state)
+        self.assertEqual(machine.read(symbols["tick_counter"], 4),
+                         machine2.read(symbols["tick_counter"], 4))
+        self.assertEqual(machine.registers(), machine2.registers())
+        # resume works
+        machine2.run_ms(10)
+        self.assertGreater(machine2.icount, machine.icount)
+
 
 class UartRxTest(unittest.TestCase):
     def test_rx_interrupt_echo(self):

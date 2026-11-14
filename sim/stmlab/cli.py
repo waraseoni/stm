@@ -245,21 +245,40 @@ def _fmt_values(addr, values, size):
         print("0x%08x = 0x%0*x" % (addr + index * size, size * 2, value))
 
 
+def _resolve_addr(args, text):
+    text = str(text).strip()
+    try:
+        return parse_int(text)
+    except ValueError:
+        from stmlab.regmap import resolve
+        board = getattr(args, "board", "f411re")
+        val = resolve(text, board)
+        if val is None:
+            raise IcError("unknown register name: %s" % text)
+        return val
+
+
 def cmd_ic(args):
     backend = make_backend(args)
     action = args.action
 
     if action == "read":
-        values = backend.read(args.address, args.count, args.size)
-        _fmt_values(args.address, values, args.size)
+        addr = _resolve_addr(args, args.address)
+        values = backend.read(addr, args.count, args.size)
+        _fmt_values(addr, values, args.size)
     elif action == "write":
-        backend.write(args.address, args.value, args.size)
-        print("0x%08x <- 0x%0*x" % (args.address, args.size * 2, args.value))
+        addr = _resolve_addr(args, args.address)
+        backend.write(addr, args.value, args.size)
+        print("0x%08x <- 0x%0*x" % (addr, args.size * 2, args.value))
     elif action == "dump":
-        path = backend.dump(args.address, args.length, args.out)
-        print("dumped %d bytes from 0x%08x to %s" % (args.length, args.address, path))
+        addr = _resolve_addr(args, args.address)
+        path = backend.dump(addr, args.length, args.out)
+        print("dumped %d bytes from 0x%08x to %s" % (args.length, addr, path))
     elif action == "load":
-        backend.load(args.file, args.addr)
+        addr = None
+        if getattr(args, "addr", None):
+            addr = _resolve_addr(args, args.addr)
+        backend.load(args.file, addr)
         print("loaded %s" % args.file)
     elif action == "info":
         print(backend.info())
@@ -318,21 +337,21 @@ def build_parser():
     ic_sub = ic.add_subparsers(dest="action", required=True)
 
     read = ic_sub.add_parser("read", help="memory words padho")
-    read.add_argument("address", type=parse_int)
+    read.add_argument("address", type=str)
     read.add_argument("-n", "--count", type=parse_int, default=1)
     read.add_argument("-s", "--size", type=parse_int, choices=(1, 2, 4), default=4)
     _add_backend_options(read)
     read.set_defaults(func=cmd_ic)
 
     write = ic_sub.add_parser("write", help="memory word likho")
-    write.add_argument("address", type=parse_int)
+    write.add_argument("address", type=str)
     write.add_argument("value", type=parse_int)
     write.add_argument("-s", "--size", type=parse_int, choices=(1, 2, 4), default=4)
     _add_backend_options(write)
     write.set_defaults(func=cmd_ic)
 
     dump = ic_sub.add_parser("dump", help="memory ko file me dump karo")
-    dump.add_argument("address", type=parse_int)
+    dump.add_argument("address", type=str)
     dump.add_argument("--length", type=parse_int, required=True)
     dump.add_argument("--out", required=True)
     _add_backend_options(dump)
@@ -340,7 +359,7 @@ def build_parser():
 
     load = ic_sub.add_parser("load", help="binary/ELF file chip par likho")
     load.add_argument("file")
-    load.add_argument("--addr", type=parse_int)
+    load.add_argument("--addr", type=str)
     _add_backend_options(load)
     load.set_defaults(func=cmd_ic)
 

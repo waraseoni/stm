@@ -38,3 +38,38 @@ class ElfImage:
         return "%s entry=0x%08x segments=%d" % (
             os.path.basename(self.path), self.entry, len(self.segments)
         )
+
+
+def source_location(path, addr):
+    """Return (file, line) for an address using DWARF debug info, or None."""
+    try:
+        with open(path, "rb") as fh:
+            elf = ELFFile(fh)
+            if not elf.has_dwarf_info():
+                return None
+            dwarf = elf.get_dwarf_info()
+            res = dwarf.line_program_for_address(addr)
+            if res is None:
+                return None
+            lp = res[1] if isinstance(res, tuple) else res
+            prev = None
+            for entry in lp.entries:
+                if entry.state is None:
+                    continue
+                if entry.state.address > addr:
+                    break
+                prev = entry.state
+            if prev is None or not prev.line:
+                return None
+            file_index = prev.file
+            if file_index == 0 or file_index > len(lp.header.file_entry):
+                return None
+            fe = lp.header.file_entry[file_index - 1]
+            name = fe.name.decode("utf-8", "replace")
+            if fe.dir_index and fe.dir_index <= len(lp.header.include_directory):
+                dname = lp.header.include_directory[fe.dir_index - 1].decode(
+                    "utf-8", "replace")
+                name = os.path.join(dname, name)
+            return (name, prev.line)
+    except Exception:  # noqa: BLE001
+        return None
