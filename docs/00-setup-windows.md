@@ -88,17 +88,24 @@ Extensions: `ms-vscode.cpptools`, `ms-vscode.cmake-tools`, `marus25.cortex-debug
 
 `stm32/vscode/` ki files project ke `.vscode/` me copy karo -> F5 se debug.
 
-## Installed versions (bharke rakhna)
+## Installed versions (is machine par, 2026-11-14)
 
 ```
-sdcc:
-stm8flash:
-arm-none-eabi-gcc:
-cmake / ninja:
-openocd:
-STM32CubeProgrammer:
-ST-Link firmware:
+sdcc:              4.5.0  (C:\Program Files\SDCC\bin\sdcc.exe)
+stm8flash:         NOT installed (no Windows binary via winget; build from source or use STVP/OpenOCD)
+arm-none-eabi-gcc: 14.2.1 (C:\Program Files (x86)\Arm GNU Toolchain arm-none-eabi\14.2 rel1\bin)
+cmake:             4.4.4  (winget Kitware.CMake)
+ninja:             1.13.2 (winget Ninja-build.Ninja)
+openocd:           0.12.0-7 (xpack-dev-tools.openocd-xpack)
+STM32CubeProgrammer: not installed
+ST-Link firmware:   not checked
+make:              4.4.1 (ezwinports.make)
 ```
+
+Notes:
+- Toolchains installed via winget (per-user). Restart shell after install.
+- OpenOCD path: C:\Users\vikram\AppData\Local\Microsoft\WinGet\Packages\xpack-dev-tools.openocd-xpack_Microsoft.Winget.Source_8wekyb3d8bbwe\xpack-openocd-0.12.0-7\bin
+- STM8 flashing: use STVP or OpenOCD (stm8 target) until stm8flash binary is available.
 
 ## Common problems
 

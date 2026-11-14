@@ -133,8 +133,10 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [x] MCU database: 88 parts (STM32/STM8 + GigaDevice/MindMotion/Geehy/WCH/Artery/NXP/Renesas/Microchip/TI) with equivalents
 - [x] GDB remote stub (CLI + GUI), GitHub Actions CI, PyInstaller build script
 - [x] Exercise scaffolding + templates (07-exti-button, 05-gpio-input-button, 08-systick-delay, docs/06-exercise-templates)
-- [ ] Toolchains installed + versions doc me likhe
-- [ ] Board par pehla flash + UART output
+- [x] Toolchains installed (SDCC 4.5.0, ARM GCC 14.2.1, CMake 4.4.4, Ninja 1.13.2, OpenOCD 0.12.0-7, make 4.4.1) + versions doc me likhe
+- [x] STM32 builds verified (01-08) + simulator runs real ELF (04-uart-printf prints UART, 05-ringbuffer RX IRQ works)
+- [x] STM8 builds verified (01-05)
+- [ ] Board par pehla flash + UART output (hardware needed)
 - [ ] Remaining Phase 1/2 exercises (templates provided in docs/06-exercise-templates.md)
 - [ ] Simulator verification with real ELF builds (ARM GCC needed)
 
