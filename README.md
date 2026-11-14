@@ -128,11 +128,15 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [x] STM8: blink, TIM4 interrupt, UART TX, UART RX echo (4 exercises)
 - [x] STM32: F103 + F4 blink, PLL, UART printf, RX ring buffer, PWM (6 exercises)
 - [x] Shared build layer (`stm32/common`, `stm8/common.mk`) + vendor script
-- [x] `sim/stmlab`: Unicorn-based STM32 simulator (UART/GPIO/SysTick/NVIC basics) + IC read/write CLI (OpenOCD/stm8flash/sim) + Tkinter GUI (click-and-run)
+- [x] `sim/stmlab`: Unicorn-based STM32 simulator (RCC/GPIO/USART/TIM2-5/SysTick/NVIC/EXTI/DMA/SPI/I2C/ADC) + IC read/write CLI (OpenOCD/stm8flash/sim) + Tkinter GUI (click-and-run)
+- [x] GUI: Hardware tab (wiring, port detect, baudrate, serial monitor, MCU selector + equivalents, connection test), Simulator tab (run/step/reset, snapshot, register explorer, memory editor, plot LED + optional mpl, breakpoints, run-until-text, watch, trace, inject RX, GDB server), IC tab (read/write/dump/load/verify/mass-erase/info/reset)
+- [x] MCU database: 88 parts (STM32/STM8 + GigaDevice/MindMotion/Geehy/WCH/Artery/NXP/Renesas/Microchip/TI) with equivalents
+- [x] GDB remote stub (CLI + GUI), GitHub Actions CI, PyInstaller build script
+- [x] Exercise scaffolding + templates (07-exti-button, 05-gpio-input-button, 08-systick-delay, docs/06-exercise-templates)
 - [ ] Toolchains installed + versions doc me likhe
 - [ ] Board par pehla flash + UART output
-- [ ] `07-exti-button` (STM32 EXTI + debounce)
-- [ ] Simulator ko real ELF builds se verify (ARM GCC chahiye) + aur peripherals (EXTI/DMA/ADC...)
+- [ ] Remaining Phase 1/2 exercises (templates provided in docs/06-exercise-templates.md)
+- [ ] Simulator verification with real ELF builds (ARM GCC needed)
 
 > Status: source, linker scripts aur build files likhe gaye hain. Is machine par
 > SDCC / ARM GCC abhi install nahi hain, isliye **compile verify pending** hai.
