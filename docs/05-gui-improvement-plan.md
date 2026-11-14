@@ -213,3 +213,68 @@ Start with **Phase A** items in this order:
 4. Dark/light theme.
 
 Then move to Phase B (register explorer, serial monitor).
+
+---
+
+## 10. Pending work merged from `docs/03-plan.md` (master plan)
+
+The GUI plan must not lose sight of the broader workspace goals. These pending
+items are tracked in `docs/03-plan.md`; GUI features should support them.
+
+### 10.1 Firmware learning (STM8 + STM32)
+- **Phase 0 (blocking):** install SDCC + stm8flash + make; arm-none-eabi-gcc + cmake + ninja + openocd; run `setup-vendor.ps1`; verify first flash + UART on both boards.
+- **Phase 1 STM8 (05-12):** GPIO input button, TIM2 PWM, EXTI, I2C EEPROM, ADC1, internal EEPROM, low-power, watchdog.
+- **Phase 2 STM32 (07-14):** EXTI button, SysTick delay, TIM input capture, SPI flash, I2C, ADC+DMA, DAC (F446), USB CDC.
+- **Phase 3:** HAL/LL + CubeMX mapping, SWD debug, FreeRTOS demo, bootloader sketch.
+- GUI support needed: guided exercise panels, expected-output checks, serial monitor, register tooltips.
+
+### 10.2 Simulator roadmap (`sim/stmlab`)
+- **Near-term:** EXTI model, DMA minimal, SPI, I2C, ADC, TIM generalise (3/4/5), FPU decision, nested interrupts/priority, per-peripheral tick, instruction trace.
+- **Mid-term:** GDB remote stub, snapshot/restore, coverage, `cmake --target sim`, CI (GitHub Actions).
+- **Deferred:** Renode/QEMU for cycle-accurate sim.
+- GUI support needed: breakpoint/watch UI, memory viewer, plot, snapshot buttons.
+
+### 10.3 IC interface roadmap (`stmlab ic`)
+- OpenOCD: flash write/verify, mass erase, option bytes.
+- STM8: offset/length slicing (done), multi-probe by serial, config file.
+- Session reuse (gdbserver mode), hex/ELF/S19 loaders, register name lookup via SVD/CMSIS.
+- GUI support needed: flash verify button, mass erase (confirm), option bytes viewer, multi-probe dropdown, live polling.
+
+### 10.4 Verification & quality
+- Keep `sim/tests/` green on every commit.
+- Add tests for each new peripheral model.
+- "Silicon vs sim" checklist per exercise.
+- Optional lint/format (`ruff`/`black`) for `sim/`.
+- Document sim-vs-silicon differences in `sim/README.md`.
+
+### 10.5 Immediate next actions (from master plan)
+1. Install toolchains (Phase 0) - unblocks firmware verification.
+2. Run first real build on `stm32/01-f103-blink` and `stm8/01-blink-pb5`, flash, capture UART.
+3. Simulator: add EXTI model + test (needed for `07-exti-button`).
+4. Push commits regularly.
+
+### 10.6 Risks / notes (carried over)
+- No compiler on this machine; firmware builds unverified.
+- Keystone hangs on `;` comments (use `//` or `@`).
+- Unicorn `WFI` is NOP; EXC_RETURN via trampoline; nested exceptions not supported.
+- `run_ms` assumes 1 instr ≈ 1 cycle; use `--instr` for precise control.
+- STM8 cannot be simulated by this core; use SDCC `ucsim`/`sstm8`.
+
+### 10.7 Definition of done (per exercise, carried over)
+- Code builds (when toolchain available).
+- Flashed on real board, behaviour observed.
+- Gotcha + register notes in `docs/`.
+- Sim test added/updated and green (if applicable).
+- Commit with `stm8:`/`stm32:`/`sim:` prefix, pushed.
+
+---
+
+## 11. Combined priority order (GUI + firmware + sim)
+
+1. **Phase 0 toolchains** (blocks everything) - do first.
+2. **GUI Phase A** (connection wizard, tooltips, progress, theme) - improves usability now.
+3. **Simulator EXTI model + test** - unblocks `07-exti-button` exercises.
+4. **First real build + flash** on both boards.
+5. **GUI Phase B** (register explorer, serial monitor, flash verify).
+6. **Phase 1/2 firmware exercises** with sim tests.
+7. **GUI Phase C** (plotting, DWARF, packaging).
