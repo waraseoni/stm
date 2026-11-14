@@ -58,6 +58,7 @@ class Machine:
     def __init__(self, board="f411re", trace=True):
         self.board = get_board(board)
         self.trace_enabled = trace
+        self.trace_log = []
 
         self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
         self._map_regions()
@@ -569,6 +570,10 @@ class Machine:
             if chunk <= 0:
                 break
             pc = self.uc.reg_read(UC_ARM_REG_PC)
+            if self.trace_enabled:
+                self.trace_log.append(pc & ~1)
+                if len(self.trace_log) > 200000:
+                    del self.trace_log[:100000]
             try:
                 self.uc.emu_start((pc & ~1) | 1, 0, count=chunk)
             except UcError as exc:
@@ -586,6 +591,15 @@ class Machine:
 
     def pc(self):
         return self.uc.reg_read(UC_ARM_REG_PC)
+
+    def dump_trace(self, path):
+        with open(path, "w", encoding="utf-8") as fh:
+            for pc in self.trace_log:
+                fh.write("0x%08x\\n" % pc)
+        return len(self.trace_log)
+
+    def clear_trace(self):
+        self.trace_log.clear()
 
     def registers(self):
         names = {

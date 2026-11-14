@@ -182,6 +182,8 @@ class SimTab(BusyMixin):
         self.rx_text = tk.StringVar()
         self.bp_text = tk.StringVar()
         self.until_text = tk.StringVar()
+        self.trace_var = tk.BooleanVar(value=False)
+        self.watches = []
 
         self.busy_widgets = []
 
@@ -222,6 +224,9 @@ class SimTab(BusyMixin):
         e2.pack(side="left", padx=4)
         stepb = ttk.Button(row3, text="Step", command=self.step)
         stepb.pack(side="left")
+        ttk.Checkbutton(row3, text="Trace", variable=self.trace_var,
+                        command=self._toggle_trace).pack(side="left", padx=(12, 0))
+        ttk.Button(row3, text="Save trace", command=self.save_trace).pack(side="left", padx=4)
         self.busy_widgets += [e, e2, runb, stepb]
 
         status = ttk.LabelFrame(self.frame, text="Status", padding=6)
@@ -249,6 +254,20 @@ class SimTab(BusyMixin):
         rrb = ttk.Frame(regs); rrb.pack(fill="x", pady=2)
         ttk.Button(rrb, text="Refresh registers", command=self.refresh_registers).pack(side="left")
         ttk.Button(rrb, text="Edit selected", command=self.edit_register).pack(side="left", padx=4)
+
+        watch = ttk.LabelFrame(self.frame, text="Watch expressions", padding=6)
+        watch.pack(fill="x", pady=6)
+        wr = ttk.Frame(watch); wr.pack(fill="x", pady=2)
+        self.watch_entry = tk.StringVar()
+        ttk.Entry(wr, textvariable=self.watch_entry, width=24).pack(side="left", padx=4)
+        ttk.Button(wr, text="Add (name or addr)", command=self.add_watch).pack(side="left", padx=4)
+        ttk.Button(wr, text="Remove", command=self.remove_watch).pack(side="left", padx=4)
+        ttk.Button(wr, text="Refresh", command=self.refresh_watches).pack(side="left", padx=4)
+        self.watch_tree = ttk.Treeview(watch, columns=("name", "address", "value"), show="headings", height=4)
+        for c, w in zip(("name", "address", "value"), (150, 110, 110)):
+            self.watch_tree.heading(c, text=c.capitalize())
+            self.watch_tree.column(c, width=w, anchor="w")
+        self.watch_tree.pack(fill="x")
 
         pp = ttk.LabelFrame(self.frame, text="Memory / registers (peek & poke)", padding=6)
         pp.pack(fill="x", pady=6)
@@ -409,6 +428,63 @@ class SimTab(BusyMixin):
         ttk.Button(frame, text="Save", command=save).pack(side="left", padx=4)
         load()
 
+    def _toggle_trace(self):
+        if self.machine is not None:
+            self.machine.trace_enabled = bool(self.trace_var.get())
+            if not self.machine.trace_enabled:
+                self.machine.clear_trace()
+
+    def save_trace(self):
+        if self.machine is None or not self.machine.trace_log:
+            messagebox.showinfo("stmlab", "No trace captured. Enable Trace and run first.")
+            return
+        path = filedialog.asksaveasfilename(title="Save trace", defaultextension=".txt",
+                                           filetypes=[("Text", "*.txt"), ("All", "*.*")])
+        if not path:
+            return
+        n = self.machine.dump_trace(path)
+        toast(self.root, "Saved %d PCs to %s" % (n, path), "success")
+
+    def add_watch(self):
+        if not self._need_machine():
+            return
+        text = self.watch_entry.get().strip()
+        if not text:
+            return
+        try:
+            if text in self.machine.symbols:
+                addr = self.machine.symbols[text]
+                label = text
+            else:
+                addr = int(text, 0)
+                label = "0x%08x" % addr
+        except ValueError:
+            messagebox.showerror("stmlab", "Invalid watch expression.")
+            return
+        self.watches.append((label, addr))
+        self.refresh_watches()
+
+    def remove_watch(self):
+        sel = self.watch_tree.selection()
+        if not sel:
+            return
+        idx = self.watch_tree.index(sel[0])
+        if 0 <= idx < len(self.watches):
+            del self.watches[idx]
+        self.refresh_watches()
+
+    def refresh_watches(self):
+        for item in self.watch_tree.get_children():
+            self.watch_tree.delete(item)
+        if self.machine is None:
+            return
+        for label, addr in self.watches:
+            try:
+                val = self.machine.peek(addr, 4)
+            except Exception:  # noqa: BLE001
+                val = 0
+            self.watch_tree.insert("", "end", values=(label, "0x%08x" % addr, "0x%08x" % val))
+
     def _resolve_addr(self, text):
         text = text.strip()
         try:
@@ -505,9 +581,13 @@ class SimTab(BusyMixin):
 
     def _set_machine(self, m):
         self.machine = m
+        if self.machine is not None:
+            self.machine.trace_enabled = bool(self.trace_var.get())
+            self.machine.clear_trace()
         self.refresh_status()
         self.refresh_uart()
         self.refresh_registers()
+        self.refresh_watches()
         toast(self.root, "Firmware loaded.", "success")
 
     def reset_machine(self):
@@ -552,6 +632,7 @@ class SimTab(BusyMixin):
         self.refresh_status()
         self.refresh_uart()
         self.refresh_registers()
+        self.refresh_watches()
 
     def refresh_status(self):
         if self.machine is None:
