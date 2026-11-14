@@ -1,0 +1,11 @@
+{
+  "version": 6,
+  "configurePresets": [
+    { "name": "f411re", "displayName": "Nucleo-F411RE (Debug, Ninja)", "generator": "Ninja", "binaryDir": "${sourceDir}/build", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/../cmake/arm-none-eabi-gcc.cmake", "CMAKE_EXPORT_COMPILE_COMMANDS": "ON", "CPU": "cortex-m4", "BOARD": "f411re" } },
+    { "name": "f446re", "displayName": "Nucleo-F446RE (Debug, Ninja)", "generator": "Ninja", "binaryDir": "${sourceDir}/build", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/../cmake/arm-none-eabi-gcc.cmake", "CMAKE_EXPORT_COMPILE_COMMANDS": "ON", "CPU": "cortex-m4", "BOARD": "f446re" } }
+  ],
+  "buildPresets": [
+    { "name": "f411re", "configurePreset": "f411re" },
+    { "name": "f446re", "configurePreset": "f446re" }
+  ]
+}
