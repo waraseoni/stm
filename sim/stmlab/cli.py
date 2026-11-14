@@ -4,6 +4,7 @@ import argparse
 import json
 import shlex
 import sys
+import time
 
 from . import mini
 from .boards import BOARDS, get_board
@@ -392,6 +393,15 @@ def build_parser():
     _add_backend_options(stm8_flash)
     stm8_flash.set_defaults(func=_cmd_stm8_flash)
 
+    # Top-level GDB remote stub.
+    gdb = sub.add_parser("gdb", help="start a minimal GDB remote stub")
+    gdb.add_argument("elf", nargs="?")
+    gdb.add_argument("--board", default="f411re", choices=sorted(BOARDS))
+    gdb.add_argument("--port", type=int, default=1234)
+    gdb.add_argument("--host", default="127.0.0.1")
+    gdb.add_argument("--trace", action="store_true")
+    gdb.set_defaults(func=cmd_gdb)
+
     return parser
 
 
@@ -406,6 +416,27 @@ def _cmd_stm8_flash(args):
     backend = Stm8FlashBackend(args.part, args.programmer, args.exe)
     backend.load(args.file)
     print("STM8 flash written from %s" % args.file)
+    return 0
+
+
+def cmd_gdb(args):
+    board = get_board(args.board)
+    machine = Machine(board.name, trace=args.trace)
+    if args.elf:
+        machine.load_elf(args.elf)
+    from stmlab.gdbstub import GdbStub
+    stub = GdbStub(machine, host=args.host, port=args.port)
+    stub.start()
+    print("GDB stub listening on %s:%d" % (args.host, args.port))
+    print("target remote %s:%d" % (args.host, args.port))
+    print("Press Ctrl-C to stop.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    stub.stop()
+    print("stopped")
     return 0
 
 
