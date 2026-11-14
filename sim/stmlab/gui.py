@@ -1,4 +1,8 @@
-"""Tkinter GUI for stmlab - click-and-run, no command line needed."""
+"""Tkinter GUI for stmlab - click-and-run, no command line needed.
+
+Beginner-friendly: Hardware tab (wiring + port detection), Simulator tab,
+IC Read/Write tab. Optional features (serial, modern theme) are feature-gated.
+"""
 
 import os
 import sys
@@ -6,21 +10,118 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-# Make sure the package is importable when launched directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stmlab import mini
 from stmlab.boards import BOARDS, get_board
-from stmlab.ic import IcError, Stm8FlashBackend, make_backend
+from stmlab.ic import IcError, make_backend
 from stmlab.machine import Machine, MachineError
+
+# Optional deps (feature-gated)
+try:
+    import serial  # noqa: F401
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except Exception:  # noqa: BLE001
+    HAS_SERIAL = False
+
+try:
+    import sv_ttk
+    HAS_SVTTK = True
+except Exception:  # noqa: BLE001
+    HAS_SVTTK = False
+
+
+WIRING = {
+    "f411re": """Nucleo-F411RE / F446RE  (onboard ST-Link, no extra wiring for SWD)
+
+SWD: done onboard via USB (CN1 / ST-Link)
+printf UART: USART2 on PA2 (TX) / PA3 (RX) @ 115200 8N1
+LED: PA5 (LD2, active high)
+User button: PC13 (B1, active low)
+
+USB cable: PC <-> Nucleo CN1 (ST-Link)  [debug + power]
+Optional: PC <-> Nucleo virtual COM (USART2) for printf
+""",
+    "f446re": """Nucleo-F446RE  (onboard ST-Link)
+
+SWD: onboard via USB
+printf UART: USART2 on PA2 (TX) / PA3 (RX) @ 115200 8N1
+LED: PA5 (LD2)
+User button: PC13 (B1)
+""",
+    "f103c8": """Blue Pill (F103C8T6) + ST-Link V2  (external wiring)
+
+ST-Link V2  ->  Blue Pill
+  3.3V  --->  3V3
+  GND   --->  GND
+  SWDIO --->  PA13 (DIO)
+  SWCLK --->  PA14 (CLK)
+  RST   --->  NRST (optional)
+
+Boot: BOOT0=0 for flash, BOOT0=1 for system bootloader (UART PA9/PA10 @ 115200)
+LED: PC13 (active low)
+User button: usually PA0 (add your own)
+""",
+}
+
+
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+
+    def show(self, _event=None):
+        if self.tip is not None:
+            return
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry("+%d+%d" % (x, y))
+        lbl = tk.Label(self.tip, text=self.text, background="#ffffe0",
+                       relief="solid", borderwidth=1, font=("Segoe UI", 9),
+                       justify="left", wraplength=320)
+        lbl.pack()
+
+    def hide(self, _event=None):
+        if self.tip is not None:
+            self.tip.destroy()
+            self.tip = None
+
+
+def toast(root, message, kind="info", duration=3000):
+    colors = {"info": "#333333", "success": "#1e7e34",
+              "warning": "#b7791f", "error": "#c0392b"}
+    top = tk.Toplevel(root)
+    top.overrideredirect(True)
+    top.attributes("-topmost", True)
+    lbl = tk.Label(top, text=message, bg=colors.get(kind, "#333333"),
+                   fg="white", font=("Segoe UI", 10, "bold"), padx=14, pady=8)
+    lbl.pack()
+    root.update_idletasks()
+    x = root.winfo_rootx() + root.winfo_width() - top.winfo_reqwidth() - 20
+    y = root.winfo_rooty() + root.winfo_height() - top.winfo_reqheight() - 40
+    top.geometry("+%d+%d" % (x, y))
+    top.after(duration, top.destroy)
 
 
 class BusyMixin:
+    def __init__(self):
+        self.app = None
+
     def run_busy(self, fn, on_done=None):
-        """Run fn() in a worker thread; disable/enable self.busy_widgets."""
         for w in getattr(self, "busy_widgets", []):
-            w.config(state="disabled")
-        self.status_var.set("Busy...")
+            try:
+                w.config(state="disabled")
+            except Exception:  # noqa: BLE001
+                pass
+        self._set_status("Busy...")
+        if self.app is not None and getattr(self.app, "progress", None) is not None:
+            self.app.progress.start(12)
 
         def worker():
             try:
@@ -33,22 +134,38 @@ class BusyMixin:
 
     def _done(self, result, on_done):
         for w in getattr(self, "busy_widgets", []):
-            w.config(state="normal")
-        self.status_var.set("Ready")
+            try:
+                w.config(state="normal")
+            except Exception:  # noqa: BLE001
+                pass
+        self._set_status("Ready")
+        if self.app is not None and getattr(self.app, "progress", None) is not None:
+            self.app.progress.stop()
         if on_done is not None:
             on_done(result)
 
     def _fail(self, exc):
         for w in getattr(self, "busy_widgets", []):
-            w.config(state="normal")
-        self.status_var.set("Error: %s" % exc)
+            try:
+                w.config(state="disabled" if False else "normal")
+            except Exception:  # noqa: BLE001
+                pass
+        self._set_status("Error: %s" % exc)
+        if self.app is not None and getattr(self.app, "progress", None) is not None:
+            self.app.progress.stop()
         messagebox.showerror("stmlab", str(exc))
+
+    def _set_status(self, text):
+        if self.app is not None:
+            self.app.status_var.set(text)
 
 
 class SimTab(BusyMixin):
-    def __init__(self, root, notebook, status_var):
+    def __init__(self, root, notebook, app):
+        super().__init__()
         self.root = root
-        self.status_var = status_var
+        self.app = app
+        self.status_var = app.status_var
         self.frame = ttk.Frame(notebook, padding=10)
         notebook.add(self.frame, text="Simulator")
 
@@ -62,16 +179,16 @@ class SimTab(BusyMixin):
         self.poke_addr = tk.StringVar(value="0x40020014")
         self.poke_value = tk.StringVar(value="0x20")
         self.poke_size = tk.StringVar(value="4")
+        self.rx_text = tk.StringVar()
 
         self.busy_widgets = []
 
-        # ---- board + ELF ----
-        row = ttk.Frame(self.frame)
-        row.pack(fill="x", pady=4)
+        row = ttk.Frame(self.frame); row.pack(fill="x", pady=4)
         ttk.Label(row, text="Board:").pack(side="left")
         cb = ttk.Combobox(row, textvariable=self.board_name, values=sorted(BOARDS),
                           state="readonly", width=10)
         cb.pack(side="left", padx=4)
+        Tooltip(cb, "Target board for the simulator.")
         ttk.Label(row, text="ELF:").pack(side="left", padx=(12, 0))
         ent = ttk.Entry(row, textvariable=self.elf_path, width=46)
         ent.pack(side="left", padx=4, fill="x", expand=True)
@@ -79,22 +196,23 @@ class SimTab(BusyMixin):
         br.pack(side="left")
         self.busy_widgets += [cb, ent, br]
 
-        row2 = ttk.Frame(self.frame)
-        row2.pack(fill="x", pady=4)
+        row2 = ttk.Frame(self.frame); row2.pack(fill="x", pady=4)
         load = ttk.Button(row2, text="Load ELF", command=self.load_elf)
         load.pack(side="left")
+        Tooltip(load, "Load a GCC-built firmware ELF into the simulator.")
         demo = ttk.Button(row2, text="Load Demo (no toolchain)", command=self.load_demo)
         demo.pack(side="left", padx=4)
+        Tooltip(demo, "Load a hand-assembled demo program (no compiler needed).")
         reset = ttk.Button(row2, text="Reset", command=self.reset_machine)
         reset.pack(side="left", padx=4)
+        Tooltip(reset, "Reset CPU + reload the loaded image.")
         self.busy_widgets += [load, demo, reset]
 
-        # ---- run controls ----
-        row3 = ttk.Frame(self.frame)
-        row3.pack(fill="x", pady=4)
+        row3 = ttk.Frame(self.frame); row3.pack(fill="x", pady=4)
         ttk.Label(row3, text="Run (ms):").pack(side="left")
         e = ttk.Entry(row3, textvariable=self.run_ms, width=8)
         e.pack(side="left", padx=4)
+        Tooltip(e, "Simulated milliseconds (approx 1 instr = 1 cycle).")
         runb = ttk.Button(row3, text="Run", command=self.run_ms)
         runb.pack(side="left")
         ttk.Label(row3, text="Step (instr):").pack(side="left", padx=(12, 0))
@@ -104,19 +222,16 @@ class SimTab(BusyMixin):
         stepb.pack(side="left")
         self.busy_widgets += [e, e2, runb, stepb]
 
-        # ---- status ----
         status = ttk.LabelFrame(self.frame, text="Status", padding=6)
         status.pack(fill="x", pady=6)
         self.status_text = tk.StringVar(value="No firmware loaded.")
         ttk.Label(status, textvariable=self.status_text, justify="left").pack(anchor="w")
 
-        # ---- UART output ----
         uart = ttk.LabelFrame(self.frame, text="UART output", padding=6)
         uart.pack(fill="both", expand=True, pady=6)
         self.uart_box = tk.Text(uart, height=8, state="disabled", wrap="char")
         self.uart_box.pack(fill="both", expand=True)
 
-        # ---- peek / poke ----
         pp = ttk.LabelFrame(self.frame, text="Memory / registers (peek & poke)", padding=6)
         pp.pack(fill="x", pady=6)
         r = ttk.Frame(pp); r.pack(fill="x", pady=2)
@@ -137,20 +252,15 @@ class SimTab(BusyMixin):
         ttk.Entry(r2, textvariable=self.poke_size, width=4).pack(side="left", padx=4)
         ttk.Button(r2, text="Write", command=self.poke).pack(side="left", padx=4)
 
-        # ---- RX inject ----
         r3 = ttk.Frame(pp); r3.pack(fill="x", pady=2)
-        self.rx_text = tk.StringVar()
         ttk.Label(r3, text="Inject RX:").pack(side="left")
         ttk.Entry(r3, textvariable=self.rx_text, width=24).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (text)", command=lambda: self.inject_rx(False)).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (hex:)", command=lambda: self.inject_rx(True)).pack(side="left", padx=4)
 
-    # ---- actions ----
     def browse_elf(self):
-        path = filedialog.askopenfilename(
-            title="Select firmware ELF",
-            filetypes=[("ELF files", "*.elf *.axf"), ("All files", "*.*")],
-        )
+        path = filedialog.askopenfilename(title="Select firmware ELF",
+                                         filetypes=[("ELF files", "*.elf *.axf"), ("All files", "*.*")])
         if path:
             self.elf_path.set(path)
 
@@ -189,6 +299,7 @@ class SimTab(BusyMixin):
         self.machine = m
         self.refresh_status()
         self.refresh_uart()
+        toast(self.root, "Firmware loaded.", "success")
 
     def reset_machine(self):
         if not self._need_machine():
@@ -196,6 +307,7 @@ class SimTab(BusyMixin):
         self.machine.reset()
         self.refresh_status()
         self.refresh_uart()
+        toast(self.root, "Reset done.", "info")
 
     def run_ms(self):
         if not self._need_machine():
@@ -287,7 +399,7 @@ class SimTab(BusyMixin):
             return
         self.refresh_status()
         self.refresh_uart()
-        messagebox.showinfo("stmlab", "Write done.")
+        toast(self.root, "Write done.", "success")
 
     def inject_rx(self, as_hex):
         if not self._need_machine():
@@ -308,9 +420,11 @@ class SimTab(BusyMixin):
 
 
 class IcTab(BusyMixin):
-    def __init__(self, root, notebook, status_var):
+    def __init__(self, root, notebook, app):
+        super().__init__()
         self.root = root
-        self.status_var = status_var
+        self.app = app
+        self.status_var = app.status_var
         self.frame = ttk.Frame(notebook, padding=10)
         notebook.add(self.frame, text="IC Read/Write")
 
@@ -331,12 +445,13 @@ class IcTab(BusyMixin):
 
         self.busy_widgets = []
 
-        # ---- backend ----
         r = ttk.Frame(self.frame); r.pack(fill="x", pady=4)
         ttk.Label(r, text="Backend:").pack(side="left")
         cb = ttk.Combobox(r, textvariable=self.backend_name,
                           values=["sim", "openocd", "stm8flash"], state="readonly", width=12)
         cb.pack(side="left", padx=4)
+        Tooltip(cb, "sim = simulated chip, openocd = real STM32, stm8flash = real STM8.")
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._update_backend_buttons())
         ttk.Label(r, text="Board (sim):").pack(side="left", padx=(12, 0))
         cb2 = ttk.Combobox(r, textvariable=self.board_name, values=sorted(BOARDS),
                            state="readonly", width=10)
@@ -348,7 +463,6 @@ class IcTab(BusyMixin):
         br.pack(side="left")
         self.busy_widgets += [cb, cb2, ent, br]
 
-        # openocd options
         r2 = ttk.LabelFrame(self.frame, text="OpenOCD options (real STM32)", padding=6)
         r2.pack(fill="x", pady=4)
         for label, var in (("Interface:", self.interface), ("Target:", self.target)):
@@ -360,7 +474,6 @@ class IcTab(BusyMixin):
         ttk.Entry(rr, textvariable=self.exe_path, width=40).pack(side="left", padx=4, fill="x", expand=True)
         ttk.Button(rr, text="Browse", command=self.browse_exe).pack(side="left")
 
-        # stm8 options
         r3 = ttk.LabelFrame(self.frame, text="STM8 options (real STM8)", padding=6)
         r3.pack(fill="x", pady=4)
         rr = ttk.Frame(r3); rr.pack(fill="x", pady=2)
@@ -369,7 +482,6 @@ class IcTab(BusyMixin):
         ttk.Label(rr, text="Programmer:").pack(side="left", padx=(12, 0))
         ttk.Entry(rr, textvariable=self.programmer, width=12).pack(side="left", padx=4)
 
-        # address / params
         r4 = ttk.Frame(self.frame); r4.pack(fill="x", pady=4)
         ttk.Label(r4, text="Address:").pack(side="left")
         ttk.Entry(r4, textvariable=self.address, width=12).pack(side="left", padx=4)
@@ -387,20 +499,31 @@ class IcTab(BusyMixin):
         ttk.Entry(r5, textvariable=self.file_path, width=40).pack(side="left", padx=4, fill="x", expand=True)
         ttk.Button(r5, text="Browse", command=self.browse_file).pack(side="left")
 
-        # buttons
         r6 = ttk.Frame(self.frame); r6.pack(fill="x", pady=6)
-        for text, cmd in (("Read", self.do_read), ("Write", self.do_write),
-                          ("Dump", self.do_dump), ("Load", self.do_load),
-                          ("Info", self.do_info), ("Reset", self.do_reset)):
-            b = ttk.Button(r6, text=text, command=cmd)
+        self.btn_read = ttk.Button(r6, text="Read", command=self.do_read)
+        self.btn_write = ttk.Button(r6, text="Write", command=self.do_write)
+        self.btn_dump = ttk.Button(r6, text="Dump", command=self.do_dump)
+        self.btn_load = ttk.Button(r6, text="Load", command=self.do_load)
+        self.btn_info = ttk.Button(r6, text="Info", command=self.do_info)
+        self.btn_reset = ttk.Button(r6, text="Reset", command=self.do_reset)
+        for b in (self.btn_read, self.btn_write, self.btn_dump, self.btn_load, self.btn_info, self.btn_reset):
             b.pack(side="left", padx=3)
             self.busy_widgets.append(b)
 
-        # output
         out = ttk.LabelFrame(self.frame, text="Output", padding=6)
         out.pack(fill="both", expand=True, pady=6)
         self.out_box = tk.Text(out, height=14, state="disabled", wrap="char")
         self.out_box.pack(fill="both", expand=True)
+
+        self._update_backend_buttons()
+
+    def _update_backend_buttons(self):
+        backend = self.backend_name.get()
+        # stm8flash does not support word writes
+        if backend == "stm8flash":
+            self.btn_write.config(state="disabled")
+        else:
+            self.btn_write.config(state="normal")
 
     def _args(self):
         import argparse
@@ -513,22 +636,201 @@ class IcTab(BusyMixin):
         self.run_busy(work, on_done=self._log)
 
 
+class HardwareTab(BusyMixin):
+    def __init__(self, root, notebook, app):
+        super().__init__()
+        self.root = root
+        self.app = app
+        self.status_var = app.status_var
+        self.frame = ttk.Frame(notebook, padding=10)
+        notebook.add(self.frame, text="Hardware")
+
+        self.board_name = tk.StringVar(value="f411re")
+        self.port_name = tk.StringVar()
+        self.baudrate = tk.StringVar(value="115200")
+        self.backend_name = tk.StringVar(value="openocd")
+        self.interface = tk.StringVar(value="interface/stlink.cfg")
+        self.target = tk.StringVar(value="target/stm32f4x.cfg")
+        self.part = tk.StringVar(value="stm8s103f3")
+        self.programmer = tk.StringVar(value="stlinkv2")
+        self.exe_path = tk.StringVar()
+
+        self.busy_widgets = []
+
+        # ---- board + port ----
+        r = ttk.Frame(self.frame); r.pack(fill="x", pady=4)
+        ttk.Label(r, text="Board:").pack(side="left")
+        cb = ttk.Combobox(r, textvariable=self.board_name, values=sorted(BOARDS),
+                          state="readonly", width=10)
+        cb.pack(side="left", padx=4)
+        cb.bind("<<ComboboxSelected>>", lambda _e: self.refresh_wiring())
+        ttk.Label(r, text="Serial port:").pack(side="left", padx=(12, 0))
+        self.port_cb = ttk.Combobox(r, textvariable=self.port_name, values=[], width=26)
+        self.port_cb.pack(side="left", padx=4)
+        ttk.Button(r, text="Refresh ports", command=self.refresh_ports).pack(side="left", padx=4)
+        ttk.Label(r, text="Baudrate:").pack(side="left", padx=(12, 0))
+        ttk.Combobox(r, textvariable=self.baudrate,
+                     values=["9600", "19200", "38400", "57600", "115200",
+                             "230400", "460800", "921600"], width=10).pack(side="left", padx=4)
+
+        if not HAS_SERIAL:
+            ttk.Label(self.frame, text="pyserial not installed -> port auto-detect disabled. "
+                                       "Install: pip install pyserial",
+                      foreground="#b7791f").pack(anchor="w", pady=2)
+
+        # ---- wiring diagram ----
+        wd = ttk.LabelFrame(self.frame, text="Wiring diagram", padding=6)
+        wd.pack(fill="both", expand=True, pady=6)
+        self.wiring_box = tk.Text(wd, height=14, state="disabled", wrap="none",
+                                  font=("Consolas", 10))
+        self.wiring_box.pack(fill="both", expand=True)
+        self.refresh_wiring()
+
+        # ---- connection test ----
+        r2 = ttk.Frame(self.frame); r2.pack(fill="x", pady=4)
+        ttk.Label(r2, text="Backend:").pack(side="left")
+        ttk.Combobox(r2, textvariable=self.backend_name,
+                     values=["openocd", "stm8flash"], state="readonly", width=12).pack(side="left", padx=4)
+        ttk.Label(r2, text="Interface:").pack(side="left", padx=(12, 0))
+        ttk.Entry(r2, textvariable=self.interface, width=24).pack(side="left", padx=4)
+        ttk.Label(r2, text="Target:").pack(side="left", padx=(12, 0))
+        ttk.Entry(r2, textvariable=self.target, width=24).pack(side="left", padx=4)
+        ttk.Label(r2, text="exe:").pack(side="left", padx=(12, 0))
+        ttk.Entry(r2, textvariable=self.exe_path, width=24).pack(side="left", padx=4)
+
+        r3 = ttk.Frame(self.frame); r3.pack(fill="x", pady=4)
+        ttk.Label(r3, text="Part (STM8):").pack(side="left")
+        ttk.Entry(r3, textvariable=self.part, width=14).pack(side="left", padx=4)
+        ttk.Label(r3, text="Programmer:").pack(side="left", padx=(12, 0))
+        ttk.Entry(r3, textvariable=self.programmer, width=12).pack(side="left", padx=4)
+        test = ttk.Button(r3, text="Test connection", command=self.test_connection)
+        test.pack(side="left", padx=12)
+        self.busy_widgets.append(test)
+        self.conn_status = tk.StringVar(value="Not tested yet.")
+        ttk.Label(r3, textvariable=self.conn_status).pack(side="left", padx=8)
+
+        self.refresh_ports()
+
+    def refresh_wiring(self):
+        board = self.board_name.get()
+        text = WIRING.get(board, "No wiring info.")
+        self.wiring_box.config(state="normal")
+        self.wiring_box.delete("1.0", "end")
+        self.wiring_box.insert("end", text)
+        self.wiring_box.config(state="disabled")
+
+    def refresh_ports(self):
+        if not HAS_SERIAL:
+            return
+        ports = []
+        for p in serial.tools.list_ports.comports():
+            ports.append("%s - %s" % (p.device, p.description))
+        self.port_cb["values"] = ports
+        if ports and not self.port_name.get():
+            self.port_name.set(ports[0].split(" - ")[0])
+
+    def _args(self):
+        import argparse
+        ns = argparse.Namespace()
+        ns.backend = self.backend_name.get()
+        ns.board = self.board_name.get()
+        ns.elf = None
+        ns.interface = self.interface.get().strip() or None
+        ns.target = self.target.get().strip() or None
+        ns.part = self.part.get().strip()
+        ns.programmer = self.programmer.get().strip()
+        ns.exe = self.exe_path.get().strip() or None
+        ns.speed = None
+        return ns
+
+    def test_connection(self):
+        def work():
+            from stmlab.ic import make_backend
+            backend = make_backend(self._args())
+            return backend.info()
+
+        def done(text):
+            self.conn_status.set("OK: %s" % text.replace("\n", " ")[:80])
+            toast(self.root, "Connection OK", "success")
+
+        def fail(exc):
+            self.conn_status.set("FAIL: %s" % str(exc)[:80])
+            toast(self.root, "Connection failed", "error")
+
+        # run_busy only calls on_done on success; handle failure via toast in _fail already
+        self.run_busy(work, on_done=done)
+
+
 class StmlabGui:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("stmlab - STM32 Simulator & IC Read/Write")
-        self.root.geometry("920x720")
+        self.root.geometry("980x760")
+        self.root.minsize(820, 600)
         self.status_var = tk.StringVar(value="Ready")
+
+        # Optional modern theme
+        if HAS_SVTTK:
+            try:
+                sv_ttk.set_theme("light")
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Menu bar
+        menubar = tk.Menu(self.root)
+        view = tk.Menu(menubar, tearoff=0)
+        view.add_command(label="Toggle dark mode", command=self.toggle_theme)
+        menubar.add_cascade(label="View", menu=view)
+        helpm = tk.Menu(menubar, tearoff=0)
+        helpm.add_command(label="About stmlab", command=self.about)
+        helpm.add_command(label="Open README", command=self.open_readme)
+        menubar.add_cascade(label="Help", menu=helpm)
+        self.root.config(menu=menubar)
 
         notebook = ttk.Notebook(self.root)
         notebook.pack(fill="both", expand=True, padx=6, pady=6)
 
-        self.sim_tab = SimTab(self.root, notebook, self.status_var)
-        self.ic_tab = IcTab(self.root, notebook, self.status_var)
+        self.hw_tab = HardwareTab(self.root, notebook, self)
+        self.sim_tab = SimTab(self.root, notebook, self)
+        self.ic_tab = IcTab(self.root, notebook, self)
 
+        # status bar with progress
         bar = ttk.Frame(self.root, padding=(6, 2))
         bar.pack(fill="x")
         ttk.Label(bar, textvariable=self.status_var).pack(side="left")
+        self.progress = ttk.Progressbar(bar, mode="indeterminate", length=160)
+        self.progress.pack(side="right", padx=6)
+
+        self._dark = False
+
+    def toggle_theme(self):
+        self._dark = not self._dark
+        if HAS_SVTTK:
+            try:
+                sv_ttk.set_theme("dark" if self._dark else "light")
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        # Fallback: basic color swap
+        bg = "#1e1e1e" if self._dark else "#f0f0f0"
+        fg = "#e0e0e0" if self._dark else "#000000"
+        self.root.config(bg=bg)
+        toast(self.root, "Theme toggled (limited without sv_ttk).", "info")
+
+    def about(self):
+        messagebox.showinfo(
+            "stmlab",
+            "stmlab - STM32 simulator + IC read/write GUI\n\n"
+            "Unicorn-based Cortex-M simulator, OpenOCD/stm8flash backends,\n"
+            "Tkinter front-end. Beginner friendly.\n\n"
+            "Repo: https://github.com/waraseoni/stm",
+        )
+
+    def open_readme(self):
+        import webbrowser
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "sim", "README.md")
+        webbrowser.open("file://" + path.replace("\\", "/"))
 
     def run(self):
         self.root.mainloop()

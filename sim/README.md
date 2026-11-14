@@ -29,7 +29,11 @@ Beginners ke liye ek Tkinter GUI bhi hai - double-click karo, command nahi chahi
 
 - Desktop par **"stmlab GUI"** shortcut (auto-created) ya `sim\stmlab-gui.cmd` double-click karo.
 - Ya manually: `$env:PYTHONPATH="C:\next-vtech\stm-dev\sim"; python -m stmlab.gui`
-- Tabs: **Simulator** (board/ELF load, Run/Step/Reset, UART output, peek/poke, RX inject) aur **IC Read/Write** (sim/openocd/stm8flash backend, read/write/dump/load/info/reset).
+- Tabs:
+  - **Hardware**: board select, serial port auto-detect, baudrate, wiring diagram, connection test (openocd/stm8flash).
+  - **Simulator**: board/ELF load, Run/Step/Reset, UART output, peek/poke, RX inject.
+  - **IC Read/Write**: sim/openocd/stm8flash backend, read/write/dump/load/info/reset.
+- Dark/light theme toggle (View menu), tooltips, progress bar, toast notifications.
 - Sab heavy kaam background thread me hota hai, UI hang nahi hota.
 
 ## Simulator
