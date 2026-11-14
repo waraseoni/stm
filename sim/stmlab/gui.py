@@ -180,6 +180,7 @@ class SimTab(BusyMixin):
         self.poke_value = tk.StringVar(value="0x20")
         self.poke_size = tk.StringVar(value="4")
         self.rx_text = tk.StringVar()
+        self.bp_text = tk.StringVar()
 
         self.busy_widgets = []
 
@@ -274,6 +275,49 @@ class SimTab(BusyMixin):
         ttk.Entry(r3, textvariable=self.rx_text, width=24).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (text)", command=lambda: self.inject_rx(False)).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (hex:)", command=lambda: self.inject_rx(True)).pack(side="left", padx=4)
+
+        r4 = ttk.Frame(pp); r4.pack(fill="x", pady=2)
+        ttk.Label(r4, text="Breakpoint (addr or symbol):").pack(side="left")
+        ttk.Entry(r4, textvariable=self.bp_text, width=24).pack(side="left", padx=4)
+        ttk.Button(r4, text="Run to BP", command=self.run_to_bp).pack(side="left", padx=4)
+
+    def run_to_bp(self):
+        if not self._need_machine():
+            return
+        text = self.bp_text.get().strip()
+        if not text:
+            messagebox.showinfo("stmlab", "Breakpoint address/symbol enter karo.")
+            return
+        try:
+            if text in self.machine.symbols:
+                addr = self.machine.symbols[text]
+            else:
+                addr = int(text, 0)
+        except ValueError:
+            messagebox.showerror("stmlab", "Invalid breakpoint.")
+            return
+        target = addr & ~1
+
+        def work():
+            steps = 0
+            max_instr = 20_000_000
+            while not self.machine.halted and steps < max_instr:
+                self.machine.run_instructions(1000)
+                steps += 1000
+                if (self.machine.pc() & ~1) == target:
+                    break
+            return steps
+
+        def done(steps):
+            self._after_run()
+            if (self.machine.pc() & ~1) == target:
+                toast(self.root, "Breakpoint hit at 0x%08x" % target, "success")
+            elif self.machine.halted:
+                toast(self.root, "Halted: %s" % self.machine.stop_reason, "warning")
+            else:
+                toast(self.root, "BP not hit (ran %d instr)" % steps, "warning")
+
+        self.run_busy(work, on_done=done)
 
     def _register_list(self):
         try:
