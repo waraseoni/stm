@@ -57,6 +57,14 @@ python -m pip install pyserial matplotlib sv_ttk ttkbootstrap
 4. A window opens with three tabs: **Hardware**, **Simulator**, **IC Read/Write**.
 
 ### Option B - desktop shortcut (recommended)
+**Automatic (easiest):**
+```powershell
+cd C:\next-vtech\stm-dev
+powershell -ExecutionPolicy Bypass -File sim\create-shortcut.ps1
+```
+This creates "stmlab GUI" on your Desktop.
+
+**Manual (if the script fails):**
 1. Right-click on Desktop -> New -> Shortcut.
 2. Location: `pythonw.exe -m stmlab.gui`
 3. Name: `stmlab GUI`
