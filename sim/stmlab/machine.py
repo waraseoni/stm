@@ -485,7 +485,9 @@ class Machine:
         if not candidates:
             # IRQs stay pending in the NVIC until the firmware enables them.
             return
-        irq = min(candidates)
+        # Lower numeric priority = higher urgency (Cortex-M convention).
+        # Ties broken by IRQ number.
+        irq = min(candidates, key=lambda i: (self.nvic_priorities.get(i, 0), i))
         self.pending.discard(irq)
         vector = self.read_u32(self.vtor + 4 * irq)
         if vector in (0, 0xFFFFFFFF):

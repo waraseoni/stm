@@ -74,7 +74,7 @@ Commands inside the session: `run [ms]`, `step [n]`, `regs`, `peek ADDR [SZ]`, `
 - SysTick: CTRL/LOAD/VAL/COUNTFLAG, tick interrupt (exception 15).
 - NVIC: ISER/ICER/ISPR/ICPR (minimal), VTOR.
 
-Interrupts are injected at instruction-slice boundaries (not cycle-exact). `WFI` is treated as a NOP; EXC_RETURN is handled via a flash trampoline. **FPU/VFP instructions are not supported** (build with soft-float ABI).
+Interrupts are injected at instruction-slice boundaries (not cycle-exact). `WFI` is treated as a NOP; EXC_RETURN is handled via a flash trampoline. **FPU/VFP instructions are not supported** (build with soft-float ABI). Decision: keep soft-float only; enabling VFP in Unicorn would require FPU register save/restore in the exception frame and is deferred (see `docs/03-plan.md` 5.1).
 
 ## IC read/write interface
 
