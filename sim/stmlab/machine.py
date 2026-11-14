@@ -30,7 +30,8 @@ from unicorn.arm_const import (
 
 from .boards import get_board
 from .elf import ElfImage
-from .registers import FlashReg, GPIO, PWR, RCC_F1, RCC_F4, TIM, USART, SysTick
+from .registers import (ADC, DMA, EXTI, FlashReg, GPIO, I2C, PWR, RCC_F1, RCC_F4,
+                        SPI, SYSCFG, TIM, USART, SysTick)
 
 PERIPH_BASE = 0x40000000
 PERIPH_SIZE = 0x00030000
@@ -115,7 +116,24 @@ class Machine:
         }
         self.usart = USART(self, b.usart_name, b.usart_base, b.usart_irq)
         self.tim = TIM(self, "TIM2", b.tim_base)
+        self.tim2 = self.tim
+        self.tim3 = TIM(self, "TIM3", b.tim_base + 0x0400)
+        self.tim4 = TIM(self, "TIM4", b.tim_base + 0x0800)
+        self.tim5 = TIM(self, "TIM5", b.tim_base + 0x0C00)
         self.systick = SysTick()
+        if b.rcc_kind == "f4":
+            self.syscfg = SYSCFG(self, "SYSCFG", 0x40013800)
+            self.exti = EXTI(self, "EXTI", 0x40013C00, self.syscfg)
+            self.dma1 = DMA(self, "DMA1", 0x40026000)
+            self.dma2 = DMA(self, "DMA2", 0x40026400)
+        else:
+            self.syscfg = None
+            self.exti = None
+            self.dma1 = None
+            self.dma2 = None
+        self.spi = SPI(self, "SPI1", 0x40013000)
+        self.i2c = I2C(self, "I2C1", 0x40005400)
+        self.adc = ADC(self, "ADC1", 0x40012000)
         self.reset_button_state()
 
     def _hooks(self):
@@ -261,7 +279,10 @@ class Machine:
 
     # -- peripheral dispatch ------------------------------------------
     def _find_peripheral(self, addr):
-        for dev in (self.rcc, self.pwr, self.flashreg, self.usart, self.tim, *self.gpio.values()):
+        for dev in (self.rcc, self.pwr, self.flashreg, self.usart, self.tim,
+                    self.tim2, self.tim3, self.tim4, self.tim5, self.syscfg,
+                    self.exti, self.dma1, self.dma2, self.spi, self.i2c,
+                    self.adc, *self.gpio.values()):
             if dev is not None and dev.base <= addr < dev.base + 0x400:
                 return dev
         return None
@@ -387,6 +408,10 @@ class Machine:
     def on_pwm_ccr(self, value):
         self.pwm_events.append((self.icount, value))
 
+    def on_spi_tx(self, name, byte):
+        # placeholder hook for future tracing
+        pass
+
     def raise_irq(self, irq):
         self.pending.add(irq)
 
@@ -398,11 +423,26 @@ class Machine:
         g = self.gpio.get(b.button_port)
         if g is None:
             return
+        old = (g.idr >> b.button_pin) & 1
         level = (0 if pressed else 1) if b.button_active_low else int(bool(pressed))
         if level:
             g.idr |= 1 << b.button_pin
         else:
             g.idr &= ~(1 << b.button_pin)
+        new = (g.idr >> b.button_pin) & 1
+        if new != old:
+            self.on_gpio_input_changed(b.button_port, b.button_pin, new == 1)
+
+    def on_gpio_input_changed(self, port, pin, rising):
+        if getattr(self, "exti", None) is None:
+            return
+        port_index = ord(port) - ord("A")
+        self.exti.trigger_from_gpio(port_index, pin, rising)
+
+    def raise_exti(self, line):
+        if getattr(self, "exti", None) is None:
+            return
+        self.pending.add(self.exti.irq_for_line(line))
 
     def reset_button_state(self):
         b = self.board

@@ -134,6 +134,59 @@ class PeripheralModelTest(unittest.TestCase):
         self.assertAlmostEqual(machine.tim.duty(), 0.25, places=3)
         self.assertEqual(machine.pwm_events[-1][1], 250)
 
+    def test_spi_flags_and_tx(self):
+        machine = Machine("f411re", trace=False)
+        self.assertTrue(machine.peek(0x40013008, 4) & 0x03)   # TXE|RXNE
+        machine.poke(0x4001300C, 1, 0x55)
+        self.assertEqual(machine.spi.tx_log[-1], 0x55)
+
+    def test_i2c_start_addressed(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x40005400, 4, 1 << 8)           # CR1 START
+        self.assertTrue(machine.peek(0x40005414, 4) & 1)  # SB
+        machine.poke(0x40005410, 1, 0x50)             # DR address
+        self.assertTrue(machine.peek(0x40005414, 4) & 2)  # ADDR
+        machine.peek(0x40005418, 4)                    # read SR2 clears
+        self.assertFalse(machine.peek(0x40005414, 4) & 2)
+
+    def test_adc_conversion(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x40012034, 4, 5)                 # SQR3 channel 5
+        machine.poke(0x40012008, 4, (1 << 0) | (1 << 30))  # ADON + SWSTART
+        self.assertTrue(machine.peek(0x40012000, 4) & (1 << 1))  # EOC
+        self.assertEqual(machine.peek(0x4001204C, 4), 0x0805)
+
+    def test_dma_m2m(self):
+        machine = Machine("f411re", trace=False)
+        src, dst = 0x20000100, 0x20000200
+        for i, v in enumerate([0xA, 0xB, 0xC]):
+            machine.poke(src + i * 4, 4, v)
+        machine.poke(0x40026018, 4, dst)               # PAR (dest in M2M)
+        machine.poke(0x4002601C, 4, src)               # M0AR (src)
+        machine.poke(0x40026014, 4, 3)                 # NDTR
+        cr = (2 << 6) | (2 << 11) | (2 << 13) | (1 << 4) | 1
+        machine.poke(0x40026010, 4, cr)                # CR (EN)
+        self.assertEqual([machine.peek(dst + i * 4, 4) for i in range(3)], [0xA, 0xB, 0xC])
+        self.assertEqual(machine.peek(0x40026014, 4), 0)
+        self.assertTrue(machine.peek(0x40026000, 4) & (1 << 5))
+
+    def test_tim3_duty(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x4000042C, 4, 199)               # TIM3 ARR
+        machine.poke(0x40000434, 4, 50)                # TIM3 CCR1
+        self.assertAlmostEqual(machine.tim3.duty(), 0.25, places=2)
+
+    def test_exti_falling_edge_irq(self):
+        machine = Machine("f411re", trace=False)
+        machine.poke(0x40013C00, 4, 1)                 # EXTI IMR line0
+        machine.poke(0x40013C0C, 4, 1)                 # EXTI FTSR line0
+        machine.nvic_enabled |= 1 << 6                 # EXTI0_IRQn
+        machine.gpio["A"].idr |= 1                     # PA0 high initially
+        machine.gpio["A"].idr &= ~1                    # PA0 goes low
+        machine.on_gpio_input_changed("A", 0, False)    # falling edge
+        self.assertIn(6, machine.pending)
+        self.assertTrue(machine.peek(0x40013C14, 4) & 1)  # PR bit0 set
+
 
 class SimBackendTest(unittest.TestCase):
     def test_read_write_dump_load(self):
