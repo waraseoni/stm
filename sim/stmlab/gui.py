@@ -1304,6 +1304,7 @@ class StmlabGui:
         menubar = tk.Menu(self.root)
         view = tk.Menu(menubar, tearoff=0)
         view.add_command(label="Toggle dark mode", command=self.toggle_theme)
+        view.add_command(label="Reset settings", command=self.reset_settings)
         menubar.add_cascade(label="View", menu=view)
         helpm = tk.Menu(menubar, tearoff=0)
         helpm.add_command(label="About stmlab", command=self.about)
@@ -1427,6 +1428,16 @@ class StmlabGui:
         except Exception:  # noqa: BLE001
             pass
         self.root.destroy()
+
+    def reset_settings(self):
+        if not messagebox.askyesno("stmlab", "Reset all saved settings to defaults?"):
+            return
+        try:
+            if os.path.isfile(self.settings_path):
+                os.remove(self.settings_path)
+        except Exception:  # noqa: BLE001
+            pass
+        toast(self.root, "Settings reset. Restart app to apply.", "info")
 
     def toggle_theme(self):
         self._dark = not self._dark
