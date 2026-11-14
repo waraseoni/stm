@@ -268,6 +268,11 @@ def cmd_ic(args):
             raise IcError("%s reset support nahi karta" % backend.name)
         backend.reset()
         print("reset done")
+    elif action == "verify":
+        msg = backend.verify(args.file, args.addr)
+        print(msg)
+    elif action == "mass-erase":
+        print(backend.mass_erase())
     else:                                   # pragma: no cover - argparse guards
         raise IcError("unknown ic action: %s" % action)
     return 0
@@ -346,6 +351,16 @@ def build_parser():
     reset = ic_sub.add_parser("reset", help="target reset")
     _add_backend_options(reset)
     reset.set_defaults(func=cmd_ic)
+
+    verify = ic_sub.add_parser("verify", help="verify a file against chip memory")
+    verify.add_argument("file")
+    verify.add_argument("--addr", type=parse_int)
+    _add_backend_options(verify)
+    verify.set_defaults(func=cmd_ic, action="verify")
+
+    mass_erase = ic_sub.add_parser("mass-erase", help="erase all flash (with confirmation)")
+    _add_backend_options(mass_erase)
+    mass_erase.set_defaults(func=cmd_ic, action="mass-erase")
 
     # STM8 convenience wrappers (dump/flash are the only stm8flash operations).
     stm8_dump = ic_sub.add_parser("stm8-dump", help="STM8 flash ko file me dump karo")

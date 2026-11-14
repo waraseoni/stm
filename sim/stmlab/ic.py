@@ -153,6 +153,23 @@ class OpenOCDBackend:
     def reset(self):
         self._cmd("init", "reset", "shutdown")
 
+    def verify(self, path, addr=None):
+        path = os.path.abspath(path)
+        if path.lower().endswith((".elf", ".axf")):
+            self._cmd("init", "halt", 'verify_image "%s"' % path, "shutdown",
+                      timeout=300)
+            return "verified %s" % path
+        if addr is None:
+            raise IcError("binary verify ke liye address chahiye (--addr)")
+        self._cmd("init", "halt", 'verify_image "%s" 0x%08x' % (path, addr),
+                  "shutdown", timeout=300)
+        return "verified %s @ 0x%08x" % (path, addr)
+
+    def mass_erase(self):
+        self._cmd("init", "halt", "flash erase_sector 0 0 last", "reset",
+                  "shutdown", timeout=300)
+        return "mass erase done"
+
     def info(self):
         return self._cmd("init", "targets", "shutdown").strip()
 
@@ -192,6 +209,24 @@ class Stm8FlashBackend:
 
     def load(self, path, addr=None):
         _run(self._cmd("-w", os.path.abspath(path)))
+
+    def verify(self, path, addr=None):
+        path = os.path.abspath(path)
+        with open(path, "rb") as fh:
+            blob = fh.read()
+        flash = bytes(self.read(self.FLASH_START, len(blob), 1))
+        if flash != blob:
+            raise IcError("verify failed: %d bytes differ"
+                         % sum(a != b for a, b in zip(flash, blob)))
+        return "verified %s (%d bytes)" % (path, len(blob))
+
+    def mass_erase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "erased.bin")
+            with open(path, "wb") as fh:
+                fh.write(b"\xff" * self.FLASH_SIZE)
+            _run(self._cmd("-w", path))
+        return "mass erase done (0xFF fill)"
 
     def read(self, addr, count=1, size=4):
         if not (self.FLASH_START <= addr and
@@ -254,6 +289,21 @@ class SimBackend:
 
     def reset(self):
         self.machine.reset()
+
+    def verify(self, path, addr=None):
+        with open(os.path.abspath(path), "rb") as fh:
+            blob = fh.read()
+        if addr is None:
+            addr = self.board.flash_base
+        flash = bytes(self.machine.uc.mem_read(addr, len(blob)))
+        if flash != blob:
+            raise IcError("verify failed: %d bytes differ" % sum(a != b for a, b in zip(flash, blob)))
+        return "verified %s (%d bytes)" % (path, len(blob))
+
+    def mass_erase(self):
+        size = self.board.flash_size
+        self.machine.uc.mem_write(self.board.flash_base, b"\xff" * size)
+        return "mass erase done (simulated)"
 
     def info(self):
         return "sim: board=%s (Unicorn Cortex-M)" % self.board.name

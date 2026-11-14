@@ -731,9 +731,12 @@ class IcTab(BusyMixin):
         self.btn_write = ttk.Button(r6, text="Write", command=self.do_write)
         self.btn_dump = ttk.Button(r6, text="Dump", command=self.do_dump)
         self.btn_load = ttk.Button(r6, text="Load", command=self.do_load)
+        self.btn_verify = ttk.Button(r6, text="Verify", command=self.do_verify)
+        self.btn_erase = ttk.Button(r6, text="Mass Erase", command=self.do_mass_erase)
         self.btn_info = ttk.Button(r6, text="Info", command=self.do_info)
         self.btn_reset = ttk.Button(r6, text="Reset", command=self.do_reset)
-        for b in (self.btn_read, self.btn_write, self.btn_dump, self.btn_load, self.btn_info, self.btn_reset):
+        for b in (self.btn_read, self.btn_write, self.btn_dump, self.btn_load,
+                  self.btn_verify, self.btn_erase, self.btn_info, self.btn_reset):
             b.pack(side="left", padx=3)
             self.busy_widgets.append(b)
 
@@ -843,6 +846,29 @@ class IcTab(BusyMixin):
                 addr = self._int(self.address.get())
             backend.load(path, addr)
             return "loaded %s" % path
+
+        self.run_busy(work, on_done=self._log)
+
+    def do_verify(self):
+        if not messagebox.askyesno("stmlab", "Verify file against chip memory?"):
+            return
+        def work():
+            backend = self._backend()
+            path = self.file_path.get().strip()
+            if not path or not os.path.isfile(path):
+                raise IcError("Valid file required for verify.")
+            addr = None
+            if self.address.get().strip():
+                addr = self._int(self.address.get())
+            return backend.verify(path, addr)
+
+        self.run_busy(work, on_done=self._log)
+
+    def do_mass_erase(self):
+        if not messagebox.askyesno("stmlab", "Mass erase ALL flash? This cannot be undone."):
+            return
+        def work():
+            return self._backend().mass_erase()
 
         self.run_busy(work, on_done=self._log)
 
