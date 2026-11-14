@@ -1193,6 +1193,8 @@ class StmlabGui:
         helpm = tk.Menu(menubar, tearoff=0)
         helpm.add_command(label="About stmlab", command=self.about)
         helpm.add_command(label="Open README", command=self.open_readme)
+        helpm.add_command(label="Open docs folder", command=self.open_docs)
+        helpm.add_command(label="Guided exercises", command=self.show_exercises)
         menubar.add_cascade(label="Help", menu=helpm)
         self.root.config(menu=menubar)
 
@@ -1339,6 +1341,57 @@ class StmlabGui:
         path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__)))), "sim", "README.md")
         webbrowser.open("file://" + path.replace("\\", "/"))
+
+    def open_docs(self):
+        import webbrowser
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        webbrowser.open("file://" + os.path.join(root, "docs").replace("\\", "/"))
+
+    def show_exercises(self):
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        top = tk.Toplevel(self.root)
+        top.title("Guided exercises")
+        frame = ttk.Frame(top, padding=8)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Select an exercise folder:").pack(anchor="w")
+        lb = tk.Listbox(frame, height=14, width=40)
+        lb.pack(side="left", fill="both", expand=True)
+        sb = ttk.Scrollbar(frame, orient="vertical", command=lb.yview)
+        sb.pack(side="right", fill="y")
+        lb.config(yscrollcommand=sb.set)
+        items = []
+        for base in ("stm8", "stm32"):
+            d = os.path.join(root, base)
+            if not os.path.isdir(d):
+                continue
+            for name in sorted(os.listdir(d)):
+                if os.path.isdir(os.path.join(d, name)):
+                    items.append("%s/%s" % (base, name))
+        for it in items:
+            lb.insert("end", it)
+
+        def open_folder():
+            sel = lb.curselection()
+            if not sel:
+                return
+            path = os.path.join(root, lb.get(sel[0]).replace("/", os.sep))
+            os.startfile(path)
+
+        def open_readme_ex():
+            sel = lb.curselection()
+            if not sel:
+                return
+            path = os.path.join(root, lb.get(sel[0]).replace("/", os.sep), "README.md")
+            if os.path.isfile(path):
+                import webbrowser
+                webbrowser.open("file://" + path.replace("\\", "/"))
+            else:
+                messagebox.showinfo("stmlab", "No README.md in this folder.")
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=4)
+        ttk.Button(btns, text="Open folder", command=open_folder).pack(side="left", padx=4)
+        ttk.Button(btns, text="Open README", command=open_readme_ex).pack(side="left", padx=4)
 
     def run(self):
         self.root.mainloop()
