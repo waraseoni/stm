@@ -686,6 +686,25 @@ class HardwareTab(BusyMixin):
         self.wiring_box.pack(fill="both", expand=True)
         self.refresh_wiring()
 
+        # ---- serial monitor ----
+        sm = ttk.LabelFrame(self.frame, text="Serial monitor (UART printf)", padding=6)
+        sm.pack(fill="both", expand=True, pady=6)
+        sr = ttk.Frame(sm); sr.pack(fill="x", pady=2)
+        self.serial_status = tk.StringVar(value="Disconnected")
+        ttk.Label(sr, textvariable=self.serial_status).pack(side="left")
+        self.btn_serial_connect = ttk.Button(sr, text="Connect", command=self.serial_connect)
+        self.btn_serial_connect.pack(side="left", padx=6)
+        self.btn_serial_disconnect = ttk.Button(sr, text="Disconnect", command=self.serial_disconnect, state="disabled")
+        self.btn_serial_disconnect.pack(side="left", padx=2)
+        ttk.Button(sr, text="Clear", command=self.serial_clear).pack(side="left", padx=2)
+        self.serial_send_text = tk.StringVar()
+        ss = ttk.Frame(sm); ss.pack(fill="x", pady=2)
+        ttk.Entry(ss, textvariable=self.serial_send_text, width=40).pack(side="left", padx=4, fill="x", expand=True)
+        ttk.Button(ss, text="Send", command=self.serial_send).pack(side="left", padx=4)
+        ttk.Label(ss, text="(append \\\\n automatically)").pack(side="left")
+        self.serial_box = tk.Text(sm, height=8, state="disabled", wrap="char", font=("Consolas", 10))
+        self.serial_box.pack(fill="both", expand=True, pady=4)
+
         # ---- connection test ----
         r2 = ttk.Frame(self.frame); r2.pack(fill="x", pady=4)
         ttk.Label(r2, text="Backend:").pack(side="left")
@@ -709,6 +728,9 @@ class HardwareTab(BusyMixin):
         self.conn_status = tk.StringVar(value="Not tested yet.")
         ttk.Label(r3, textvariable=self.conn_status).pack(side="left", padx=8)
 
+        self.serial_conn = None
+        self.serial_thread = None
+        self.serial_stop = threading.Event()
         self.refresh_ports()
 
     def refresh_wiring(self):
@@ -759,6 +781,89 @@ class HardwareTab(BusyMixin):
 
         # run_busy only calls on_done on success; handle failure via toast in _fail already
         self.run_busy(work, on_done=done)
+
+    # ---- serial monitor ----
+    def _serial_port_name(self):
+        name = self.port_name.get().strip()
+        if " - " in name:
+            name = name.split(" - ")[0]
+        return name.strip()
+
+    def serial_connect(self):
+        if not HAS_SERIAL:
+            messagebox.showerror("stmlab", "pyserial not installed. pip install pyserial")
+            return
+        port = self._serial_port_name()
+        if not port:
+            messagebox.showerror("stmlab", "Serial port select karo (Refresh ports).")
+            return
+        try:
+            baud = int(self.baudrate.get())
+        except ValueError:
+            messagebox.showerror("stmlab", "Baudrate invalid.")
+            return
+        try:
+            import serial as _serial
+            self.serial_conn = _serial.Serial(port, baud, timeout=0.1)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("stmlab", "Connect failed: %s" % exc)
+            self.serial_conn = None
+            return
+        self.serial_stop.clear()
+        self.serial_thread = threading.Thread(target=self._serial_reader, daemon=True)
+        self.serial_thread.start()
+        self.btn_serial_connect.config(state="disabled")
+        self.btn_serial_disconnect.config(state="normal")
+        self.serial_status.set("Connected %s @ %d" % (port, baud))
+        toast(self.root, "Serial connected.", "success")
+
+    def _serial_reader(self):
+        while not self.serial_stop.is_set() and self.serial_conn is not None:
+            try:
+                data = self.serial_conn.read(256)
+            except Exception:  # noqa: BLE001
+                break
+            if data:
+                text = data.decode("utf-8", errors="replace")
+                self.root.after(0, lambda t=text: self._serial_append(t))
+
+    def _serial_append(self, text):
+        self.serial_box.config(state="normal")
+        self.serial_box.insert("end", text)
+        self.serial_box.see("end")
+        self.serial_box.config(state="disabled")
+
+    def serial_disconnect(self):
+        self.serial_stop.set()
+        if self.serial_conn is not None:
+            try:
+                self.serial_conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self.serial_conn = None
+        self.btn_serial_connect.config(state="normal")
+        self.btn_serial_disconnect.config(state="disabled")
+        self.serial_status.set("Disconnected")
+        toast(self.root, "Serial disconnected.", "info")
+
+    def serial_send(self):
+        if self.serial_conn is None:
+            messagebox.showinfo("stmlab", "Pehle Connect dabao.")
+            return
+        text = self.serial_send_text.get()
+        if not text:
+            return
+        try:
+            self.serial_conn.write((text + "\\n").encode())
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("stmlab", "Send failed: %s" % exc)
+            return
+        self._serial_append(">> " + text + "\\n")
+
+    def serial_clear(self):
+        self.serial_box.config(state="normal")
+        self.serial_box.delete("1.0", "end")
+        self.serial_box.config(state="disabled")
 
 
 class StmlabGui:
