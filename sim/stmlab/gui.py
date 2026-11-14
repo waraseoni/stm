@@ -242,6 +242,7 @@ class SimTab(BusyMixin):
         ttk.Button(r, text="Read", command=self.peek).pack(side="left", padx=4)
         self.peek_result = tk.StringVar(value="")
         ttk.Label(r, textvariable=self.peek_result).pack(side="left", padx=8)
+        ttk.Button(r, text="Dump 64B", command=self.dump_range).pack(side="left", padx=4)
 
         r2 = ttk.Frame(pp); r2.pack(fill="x", pady=2)
         ttk.Label(r2, text="Poke addr:").pack(side="left")
@@ -418,6 +419,30 @@ class SimTab(BusyMixin):
         self.refresh_status()
         self.refresh_uart()
 
+
+    def dump_range(self):
+        if not self._need_machine():
+            return
+        try:
+            addr = int(self.peek_addr.get(), 0)
+        except ValueError:
+            messagebox.showerror("stmlab", "Address invalid.")
+            return
+        lines = []
+        for row in range(4):
+            base = addr + row * 16
+            try:
+                vals = [self.machine.peek(base + i, 1) for i in range(16)]
+            except Exception as exc:  # noqa: BLE001
+                messagebox.showerror("stmlab", str(exc))
+                return
+            hexpart = " ".join("%02x" % v for v in vals)
+            asciipart = "".join(chr(v) if 32 <= v < 127 else "." for v in vals)
+            lines.append("0x%08x  %s  %s" % (base, hexpart, asciipart))
+        self.uart_box.config(state="normal")
+        self.uart_box.insert("end", "\n".join(lines) + "\n")
+        self.uart_box.see("end")
+        self.uart_box.config(state="disabled")
 
 class IcTab(BusyMixin):
     def __init__(self, root, notebook, app):
