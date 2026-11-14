@@ -260,6 +260,7 @@ class SimTab(BusyMixin):
         self.peek_result = tk.StringVar(value="")
         ttk.Label(r, textvariable=self.peek_result).pack(side="left", padx=8)
         ttk.Button(r, text="Dump 64B", command=self.dump_range).pack(side="left", padx=4)
+        ttk.Button(r, text="Plot LED", command=self.plot_led).pack(side="left", padx=4)
 
         r2 = ttk.Frame(pp); r2.pack(fill="x", pady=2)
         ttk.Label(r2, text="Poke addr:").pack(side="left")
@@ -580,6 +581,37 @@ class SimTab(BusyMixin):
         self.uart_box.insert("end", "\n".join(lines) + "\n")
         self.uart_box.see("end")
         self.uart_box.config(state="disabled")
+
+    def plot_led(self):
+        if not self._need_machine():
+            return
+        events = list(self.machine.led_events)
+        if not events:
+            messagebox.showinfo("stmlab", "No LED events yet. Run the firmware first.")
+            return
+        top = tk.Toplevel(self.root)
+        top.title("LED state over time")
+        canvas = tk.Canvas(top, width=720, height=220, bg="white")
+        canvas.pack(padx=8, pady=8)
+        # axes
+        canvas.create_line(40, 10, 40, 200, fill="#333")
+        canvas.create_line(40, 200, 700, 200, fill="#333")
+        canvas.create_text(20, 10, text="1", anchor="w", font=("Segoe UI", 9))
+        canvas.create_text(20, 190, text="0", anchor="w", font=("Segoe UI", 9))
+        xs = [e[0] for e in events]
+        xmin, xmax = min(xs), max(xs)
+        if xmax == xmin:
+            xmax = xmin + 1
+        prev_x, prev_y = None, None
+        for icount, level in events:
+            x = 40 + (icount - xmin) / (xmax - xmin) * 660
+            y = 20 if level else 190
+            canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill="#1e7e34" if level else "#c0392b")
+            if prev_x is not None:
+                canvas.create_line(prev_x, prev_y, x, prev_y, fill="#888")
+                canvas.create_line(x, prev_y, x, y, fill="#888")
+            prev_x, prev_y = x, y
+        canvas.create_text(370, 210, text="icount (%d .. %d)" % (xmin, xmax), font=("Segoe UI", 9))
 
 class IcTab(BusyMixin):
     def __init__(self, root, notebook, app):
