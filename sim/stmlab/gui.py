@@ -1134,6 +1134,105 @@ class StmlabGui:
         self.progress.pack(side="right", padx=6)
 
         self._dark = False
+        self.settings_path = os.path.join(os.path.expanduser("~"), ".stmlab.json")
+        self.load_settings()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def load_settings(self):
+        import json
+        try:
+            with open(self.settings_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception:  # noqa: BLE001
+            data = {}
+        try:
+            if "sim" in data:
+                d = data["sim"]
+                if "board" in d: self.sim_tab.board_name.set(d["board"])
+                if "elf" in d: self.sim_tab.elf_path.set(d["elf"])
+                if "run_ms" in d: self.sim_tab.run_ms.set(d["run_ms"])
+                if "step_n" in d: self.sim_tab.step_n.set(d["step_n"])
+            if "ic" in data:
+                d = data["ic"]
+                for k, v in d.items():
+                    attr = k
+                    if hasattr(self.ic_tab, attr + "_name") is False and hasattr(self.ic_tab, attr):
+                        pass
+                if "backend" in d: self.ic_tab.backend_name.set(d["backend"])
+                if "board" in d: self.ic_tab.board_name.set(d["board"])
+                if "interface" in d: self.ic_tab.interface.set(d["interface"])
+                if "target" in d: self.ic_tab.target.set(d["target"])
+                if "part" in d: self.ic_tab.part.set(d["part"])
+                if "programmer" in d: self.ic_tab.programmer.set(d["programmer"])
+                if "exe" in d: self.ic_tab.exe_path.set(d["exe"])
+                if "address" in d: self.ic_tab.address.set(d["address"])
+                if "size" in d: self.ic_tab.size.set(d["size"])
+                if "length" in d: self.ic_tab.length.set(d["length"])
+            if "hw" in data:
+                d = data["hw"]
+                if "board" in d: self.hw_tab.board_name.set(d["board"])
+                if "port" in d: self.hw_tab.port_name.set(d["port"])
+                if "baudrate" in d: self.hw_tab.baudrate.set(d["baudrate"])
+                if "backend" in d: self.hw_tab.backend_name.set(d["backend"])
+                if "interface" in d: self.hw_tab.interface.set(d["interface"])
+                if "target" in d: self.hw_tab.target.set(d["target"])
+                if "part" in d: self.hw_tab.part.set(d["part"])
+                if "programmer" in d: self.hw_tab.programmer.set(d["programmer"])
+                if "exe" in d: self.hw_tab.exe_path.set(d["exe"])
+            if data.get("dark"):
+                self._dark = True
+                self.toggle_theme()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def save_settings(self):
+        import json
+        data = {
+            "sim": {
+                "board": self.sim_tab.board_name.get(),
+                "elf": self.sim_tab.elf_path.get(),
+                "run_ms": self.sim_tab.run_ms.get(),
+                "step_n": self.sim_tab.step_n.get(),
+            },
+            "ic": {
+                "backend": self.ic_tab.backend_name.get(),
+                "board": self.ic_tab.board_name.get(),
+                "interface": self.ic_tab.interface.get(),
+                "target": self.ic_tab.target.get(),
+                "part": self.ic_tab.part.get(),
+                "programmer": self.ic_tab.programmer.get(),
+                "exe": self.ic_tab.exe_path.get(),
+                "address": self.ic_tab.address.get(),
+                "size": self.ic_tab.size.get(),
+                "length": self.ic_tab.length.get(),
+            },
+            "hw": {
+                "board": self.hw_tab.board_name.get(),
+                "port": self.hw_tab.port_name.get(),
+                "baudrate": self.hw_tab.baudrate.get(),
+                "backend": self.hw_tab.backend_name.get(),
+                "interface": self.hw_tab.interface.get(),
+                "target": self.hw_tab.target.get(),
+                "part": self.hw_tab.part.get(),
+                "programmer": self.hw_tab.programmer.get(),
+                "exe": self.hw_tab.exe_path.get(),
+            },
+            "dark": self._dark,
+        }
+        try:
+            with open(self.settings_path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_close(self):
+        self.save_settings()
+        # stop serial if connected
+        try:
+            self.hw_tab.serial_disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+        self.root.destroy()
 
     def toggle_theme(self):
         self._dark = not self._dark
