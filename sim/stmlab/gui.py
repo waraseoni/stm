@@ -210,6 +210,10 @@ class SimTab(BusyMixin):
         reset = ttk.Button(row2, text="Reset", command=self.reset_machine)
         reset.pack(side="left", padx=4)
         Tooltip(reset, "Reset CPU + reload the loaded image.")
+        ss = ttk.Button(row2, text="Save snapshot", command=self.save_snapshot)
+        ss.pack(side="left", padx=4)
+        sl = ttk.Button(row2, text="Load snapshot", command=self.load_snapshot)
+        sl.pack(side="left", padx=4)
         self.busy_widgets += [load, demo, reset]
 
         row3 = ttk.Frame(self.frame); row3.pack(fill="x", pady=4)
@@ -541,6 +545,36 @@ class SimTab(BusyMixin):
             return
         self.refresh_registers()
         toast(self.root, "%s updated." % name, "success")
+
+    def save_snapshot(self):
+        if not self._need_machine():
+            return
+        path = filedialog.asksaveasfilename(title="Save snapshot", defaultextension=".snap",
+                                           filetypes=[("Snapshot", "*.snap"), ("All", "*.*")])
+        if not path:
+            return
+        try:
+            self.machine.save_snapshot(path)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("stmlab", str(exc))
+            return
+        toast(self.root, "Snapshot saved.", "success")
+
+    def load_snapshot(self):
+        path = filedialog.askopenfilename(title="Load snapshot", filetypes=[("Snapshot", "*.snap"), ("All", "*.*")])
+        if not path:
+            return
+        try:
+            self.machine.load_snapshot(path)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("stmlab", str(exc))
+            return
+        self.trace_var.set(self.machine.trace_enabled)
+        self.refresh_status()
+        self.refresh_uart()
+        self.refresh_registers()
+        self.refresh_watches()
+        toast(self.root, "Snapshot loaded.", "success")
 
     def browse_elf(self):
         path = filedialog.askopenfilename(title="Select firmware ELF",

@@ -601,6 +601,153 @@ class Machine:
     def clear_trace(self):
         self.trace_log.clear()
 
+    # ---- snapshot / restore ----
+    def save_snapshot(self, path):
+        import base64, pickle
+        regmap = {
+            "r0": UC_ARM_REG_R0, "r1": UC_ARM_REG_R1, "r2": UC_ARM_REG_R2,
+            "r3": UC_ARM_REG_R3, "r12": UC_ARM_REG_R12, "sp": UC_ARM_REG_SP,
+            "lr": UC_ARM_REG_LR, "pc": UC_ARM_REG_PC, "xpsr": UC_ARM_REG_XPSR,
+            "primask": UC_ARM_REG_PRIMASK, "control": UC_ARM_REG_CONTROL,
+        }
+        regs = {name: self.uc.reg_read(reg) for name, reg in regmap.items()}
+
+        def dev_state(dev):
+            if dev is None:
+                return None
+            st = {"words": dict(getattr(dev, "_words", {}))}
+            for attr in ("odr", "prev_odr", "idr", "rx_byte", "rx_pending",
+                         "tx_bytes", "ccr1_history", "dr_value", "converted",
+                         "countflag"):
+                if hasattr(dev, attr):
+                    v = getattr(dev, attr)
+                    if isinstance(v, (bytearray, bytes)):
+                        v = list(v)
+                    if isinstance(v, deque):
+                        v = list(v)
+                    st[attr] = v
+            return st
+
+        gpio_state = {name: dev_state(dev) for name, dev in self.gpio.items()}
+        periph_state = {}
+        for attr in ("rcc", "pwr", "flashreg", "usart", "tim", "tim2", "tim3",
+                     "tim4", "tim5", "syscfg", "exti", "dma1", "dma2", "spi",
+                     "i2c", "adc"):
+            dev = getattr(self, attr, None)
+            if dev is not None:
+                periph_state[attr] = dev_state(dev)
+        # systick is a RegFile, not a Peripheral
+        periph_state["systick"] = {"words": dict(self.systick._words)}
+
+        data = {
+            "board": self.board.name,
+            "trace_enabled": self.trace_enabled,
+            "icount": self.icount,
+            "entry": self._entry,
+            "sp": self._sp,
+            "symbols": dict(self.symbols),
+            "image": [(a, base64.b64encode(d).decode()) for a, d in self._image],
+            "ram": base64.b64encode(self.uc.mem_read(self.board.ram_base, self.board.ram_size)).decode(),
+            "regs": regs,
+            "pending": sorted(self.pending),
+            "nvic_enabled": self.nvic_enabled,
+            "nvic_priorities": dict(self.nvic_priorities),
+            "vtor": self.vtor,
+            "uart": base64.b64encode(bytes(self.uart)).decode(),
+            "led_state": self.led_state,
+            "led_events": list(self.led_events),
+            "pwm_events": list(self.pwm_events),
+            "pin_events": list(self.pin_events),
+            "next_tick": self.next_tick,
+            "tick_period": self.tick_period,
+            "systick_enabled": self.systick_enabled,
+            "systick_tickint": self.systick_tickint,
+            "trace_log": list(self.trace_log),
+            "periph_state": periph_state,
+            "gpio_state": gpio_state,
+        }
+        with open(path, "wb") as fh:
+            pickle.dump(data, fh)
+        return path
+
+    def load_snapshot(self, path):
+        import base64, pickle
+        with open(path, "rb") as fh:
+            data = pickle.load(fh)
+
+        # rebuild machine from scratch
+        self.__init__(data["board"], data.get("trace_enabled", self.trace_enabled))
+        self._image = [(a, base64.b64decode(d)) for a, d in data["image"]]
+        self._entry = data["entry"]
+        self.symbols = dict(data["symbols"])
+        self._sp = data["sp"]
+        self._load_segments()
+        if "ram" in data:
+            self.uc.mem_write(self.board.ram_base, base64.b64decode(data["ram"]))
+
+        regmap = {
+            "r0": UC_ARM_REG_R0, "r1": UC_ARM_REG_R1, "r2": UC_ARM_REG_R2,
+            "r3": UC_ARM_REG_R3, "r12": UC_ARM_REG_R12, "sp": UC_ARM_REG_SP,
+            "lr": UC_ARM_REG_LR, "pc": UC_ARM_REG_PC, "xpsr": UC_ARM_REG_XPSR,
+            "primask": UC_ARM_REG_PRIMASK, "control": UC_ARM_REG_CONTROL,
+        }
+        for name, val in data["regs"].items():
+            if name in regmap:
+                self.uc.reg_write(regmap[name], val)
+
+        self.icount = data["icount"]
+        self.pending = set(data["pending"])
+        self.nvic_enabled = data["nvic_enabled"]
+        self.nvic_priorities = dict(data["nvic_priorities"])
+        self.vtor = data["vtor"]
+        self.uart = bytearray(base64.b64decode(data["uart"]))
+        self.led_state = data["led_state"]
+        from collections import deque
+        self.led_events = deque(data["led_events"], maxlen=20000)
+        self.pwm_events = deque(data["pwm_events"], maxlen=4096)
+        self.pin_events = deque(data["pin_events"], maxlen=20000)
+        self.next_tick = data["next_tick"]
+        self.tick_period = data["tick_period"]
+        self.systick_enabled = data["systick_enabled"]
+        self.systick_tickint = data["systick_tickint"]
+        self.trace_log = list(data.get("trace_log", []))
+        self.trace_enabled = data.get("trace_enabled", self.trace_enabled)
+
+        # restore peripherals
+        ps = data.get("periph_state", {})
+        for attr, st in ps.items():
+            dev = getattr(self, attr, None)
+            if dev is None or st is None:
+                continue
+            if hasattr(dev, "_words"):
+                dev._words.clear()
+                dev._words.update(st.get("words", {}))
+            for a in ("odr", "prev_odr", "idr", "rx_byte", "rx_pending",
+                      "dr_value", "converted", "countflag"):
+                if a in st and hasattr(dev, a):
+                    v = st[a]
+                    if a == "tx_bytes" and isinstance(v, list):
+                        v = bytearray(v)
+                    if a == "ccr1_history" and isinstance(v, list):
+                        v = list(v)
+                    setattr(dev, a, v)
+            if attr == "usart" and "tx_bytes" in st:
+                dev.tx_bytes = bytearray(st["tx_bytes"])
+            if attr == "tim" or attr.startswith("tim"):
+                if "ccr1_history" in st:
+                    dev.ccr1_history = list(st["ccr1_history"])
+        # gpio
+        for port, st in data.get("gpio_state", {}).items():
+            dev = self.gpio.get(port)
+            if dev is None or st is None:
+                continue
+            dev._words.clear()
+            dev._words.update(st.get("words", {}))
+            for a in ("odr", "prev_odr", "idr"):
+                if a in st:
+                    setattr(dev, a, st[a])
+        return path
+
     def registers(self):
         names = {
             "r0": UC_ARM_REG_R0, "r1": UC_ARM_REG_R1, "r2": UC_ARM_REG_R2,
