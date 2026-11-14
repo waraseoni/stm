@@ -353,41 +353,23 @@ class SimTab(BusyMixin):
 
         self.run_busy(work, on_done=done)
 
+    def _resolve_addr(self, text):
+        text = text.strip()
+        try:
+            return int(text, 0)
+        except ValueError:
+            from stmlab.regmap import resolve
+            val = resolve(text, self.board_name.get())
+            if val is None:
+                raise ValueError("unknown register name: %s" % text)
+            return val
+
     def _register_list(self):
         try:
-            board = get_board(self.board_name.get())
+            from stmlab.regmap import register_map
+            return register_map(self.board_name.get())
         except Exception:  # noqa: BLE001
             return []
-        items = []
-        items.append(("RCC_CR", board.rcc_base + 0x00))
-        cfgr_off = 0x08 if board.rcc_kind == "f4" else 0x04
-        items.append(("RCC_CFGR", board.rcc_base + cfgr_off))
-        if board.rcc_kind == "f4":
-            items.append(("RCC_AHB1ENR", board.rcc_base + 0x30))
-            items.append(("RCC_APB1ENR", board.rcc_base + 0x40))
-            items.append(("RCC_APB2ENR", board.rcc_base + 0x44))
-        else:
-            items.append(("RCC_APB2ENR", board.rcc_base + 0x18))
-            items.append(("RCC_APB1ENR", board.rcc_base + 0x1C))
-        odr_off = 0x14 if board.rcc_kind == "f4" else 0x0C
-        idr_off = 0x10 if board.rcc_kind == "f4" else 0x08
-        for name, base in board.gpio_ports.items():
-            items.append(("GPIO%s_ODR" % name, base + odr_off))
-            items.append(("GPIO%s_IDR" % name, base + idr_off))
-        items.append(("USART_SR", board.usart_base + 0x00))
-        items.append(("USART_DR", board.usart_base + 0x04))
-        items.append(("USART_BRR", board.usart_base + 0x08))
-        items.append(("USART_CR1", board.usart_base + 0x0C))
-        items.append(("TIM_ARR", board.tim_base + 0x2C))
-        items.append(("TIM_CCR1", board.tim_base + 0x34))
-        items.append(("TIM_CNT", board.tim_base + 0x24))
-        items.append(("SysTick_CTRL", 0xE000E010))
-        items.append(("SysTick_LOAD", 0xE000E014))
-        items.append(("SysTick_VAL", 0xE000E018))
-        items.append(("NVIC_ISER0", 0xE000E100))
-        items.append(("NVIC_ISER1", 0xE000E104))
-        items.append(("SCB_VTOR", 0xE000ED08))
-        return items
 
     def refresh_registers(self):
         for item in self.reg_tree.get_children():
@@ -542,7 +524,7 @@ class SimTab(BusyMixin):
         if not self._need_machine():
             return
         try:
-            addr = int(self.peek_addr.get(), 0)
+            addr = self._resolve_addr(self.peek_addr.get())
             size = int(self.peek_size.get())
         except ValueError:
             messagebox.showerror("stmlab", "Address/size invalid.")
@@ -558,7 +540,7 @@ class SimTab(BusyMixin):
         if not self._need_machine():
             return
         try:
-            addr = int(self.poke_addr.get(), 0)
+            addr = self._resolve_addr(self.poke_addr.get())
             value = int(self.poke_value.get(), 0)
             size = int(self.poke_size.get())
         except ValueError:
@@ -595,7 +577,7 @@ class SimTab(BusyMixin):
         if not self._need_machine():
             return
         try:
-            addr = int(self.peek_addr.get(), 0)
+            addr = self._resolve_addr(self.peek_addr.get())
         except ValueError:
             messagebox.showerror("stmlab", "Address invalid.")
             return
@@ -799,10 +781,23 @@ class IcTab(BusyMixin):
             return default
         return int(text, 0)
 
+    def _addr(self, text):
+        text = text.strip()
+        if not text:
+            raise ValueError("address required")
+        try:
+            return int(text, 0)
+        except ValueError:
+            from stmlab.regmap import resolve
+            val = resolve(text, self.board_name.get())
+            if val is None:
+                raise ValueError("unknown register name: %s" % text)
+            return val
+
     def do_read(self):
         def work():
             backend = self._backend()
-            addr = self._int(self.address.get())
+            addr = self._addr(self.address.get())
             count = self._int(self.count.get(), 1)
             size = self._int(self.size.get(), 4)
             vals = backend.read(addr, count, size)
@@ -814,7 +809,7 @@ class IcTab(BusyMixin):
     def do_write(self):
         def work():
             backend = self._backend()
-            addr = self._int(self.address.get())
+            addr = self._addr(self.address.get())
             value = self._int(self.value.get())
             size = self._int(self.size.get(), 4)
             backend.write(addr, value, size)
@@ -825,7 +820,7 @@ class IcTab(BusyMixin):
     def do_dump(self):
         def work():
             backend = self._backend()
-            addr = self._int(self.address.get())
+            addr = self._addr(self.address.get())
             length = self._int(self.length.get(), 256)
             path = self.file_path.get().strip()
             if not path:
@@ -843,7 +838,7 @@ class IcTab(BusyMixin):
                 raise IcError("Valid file required for load.")
             addr = None
             if self.address.get().strip():
-                addr = self._int(self.address.get())
+                addr = self._addr(self.address.get())
             backend.load(path, addr)
             return "loaded %s" % path
 
@@ -859,7 +854,7 @@ class IcTab(BusyMixin):
                 raise IcError("Valid file required for verify.")
             addr = None
             if self.address.get().strip():
-                addr = self._int(self.address.get())
+                addr = self._addr(self.address.get())
             return backend.verify(path, addr)
 
         self.run_busy(work, on_done=self._log)
