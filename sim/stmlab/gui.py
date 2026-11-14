@@ -16,6 +16,7 @@ from stmlab import mini
 from stmlab.boards import BOARDS, get_board
 from stmlab.ic import IcError, make_backend
 from stmlab.machine import Machine, MachineError
+from stmlab.mcu_db import MCUS, find as find_mcu, equivalents as mcu_equiv, search as search_mcu
 
 # Optional deps (feature-gated)
 try:
@@ -1118,6 +1119,24 @@ class HardwareTab(BusyMixin):
 
         self.busy_widgets = []
 
+        # ---- MCU / IC selector ----
+        self.mcu_name = tk.StringVar()
+        r0 = ttk.Frame(self.frame); r0.pack(fill="x", pady=4)
+        ttk.Label(r0, text="MCU / IC:").pack(side="left")
+        self.mcu_cb = ttk.Combobox(r0, textvariable=self.mcu_name,
+                                   values=[m["part"] for m in MCUS],
+                                   width=24)
+        self.mcu_cb.pack(side="left", padx=4)
+        self.mcu_cb.bind("<<ComboboxSelected>>", lambda _e: self.on_mcu_selected())
+        ttk.Button(r0, text="Search", command=self.mcu_search).pack(side="left", padx=4)
+        self.mcu_info = tk.StringVar(value="Select an MCU to auto-fill target/interface and see equivalents.")
+        ttk.Label(r0, textvariable=self.mcu_info, foreground="#555").pack(side="left", padx=8)
+
+        eq = ttk.LabelFrame(self.frame, text="Equivalent parts from other vendors", padding=6)
+        eq.pack(fill="x", pady=4)
+        self.equiv_box = tk.Text(eq, height=4, state="disabled", wrap="char", font=("Segoe UI", 9))
+        self.equiv_box.pack(fill="x")
+
         # ---- board + port ----
         r = ttk.Frame(self.frame); r.pack(fill="x", pady=4)
         ttk.Label(r, text="Board:").pack(side="left")
@@ -1193,6 +1212,58 @@ class HardwareTab(BusyMixin):
         self.serial_thread = None
         self.serial_stop = threading.Event()
         self.refresh_ports()
+
+    def on_mcu_selected(self):
+        m = find_mcu(self.mcu_name.get())
+        if not m:
+            return
+        if m.get("sim_board"):
+            self.board_name.set(m["sim_board"])
+        if m.get("target"):
+            self.target.set(m["target"])
+        if m.get("interface"):
+            # default interface
+            pass
+        # show info + equivalents
+        info = "%s | %s | %d KB flash / %d KB RAM | %s" % (
+            m["vendor"], m["family"], m["flash_kb"], m["ram_kb"], m["core"])
+        self.mcu_info.set(info)
+        eqs = m.get("equiv", [])
+        self.equiv_box.config(state="normal")
+        self.equiv_box.delete("1.0", "end")
+        if eqs:
+            for v, p, note in eqs:
+                self.equiv_box.insert("end", "%-14s %-22s - %s\n" % (v, p, note))
+        else:
+            self.equiv_box.insert("end", "(no common drop-in equivalent listed)\n")
+        self.equiv_box.config(state="disabled")
+
+    def mcu_search(self):
+        text = self.mcu_name.get().strip()
+        if not text:
+            messagebox.showinfo("stmlab", "Type part/family/vendor name first.")
+            return
+        res = search_mcu(text)
+        if not res:
+            messagebox.showinfo("stmlab", "No matches.")
+            return
+        # show results in a small dialog
+        top = tk.Toplevel(self.root)
+        top.title("MCU search results")
+        lb = tk.Listbox(top, width=60, height=12)
+        lb.pack(padx=8, pady=8, fill="both", expand=True)
+        for m in res:
+            lb.insert("end", "%s | %s | %dK/%dK | %s" % (
+                m["part"], m["family"], m["flash_kb"], m["ram_kb"], m["core"]))
+        def pick():
+            sel = lb.curselection()
+            if not sel:
+                return
+            part = res[sel[0]]["part"]
+            self.mcu_name.set(part)
+            self.on_mcu_selected()
+            top.destroy()
+        ttk.Button(top, text="Select", command=pick).pack(pady=4)
 
     def refresh_wiring(self):
         board = self.board_name.get()
@@ -1335,12 +1406,8 @@ class StmlabGui:
         self.root.minsize(820, 600)
         self.status_var = tk.StringVar(value="Ready")
 
-        # Optional modern theme
-        if HAS_SVTTK:
-            try:
-                sv_ttk.set_theme("light")
-            except Exception:  # noqa: BLE001
-                pass
+        # Apply base theme (light) before building widgets
+        self.apply_theme(False)
 
         # Menu bar
         menubar = tk.Menu(self.root)
@@ -1481,19 +1548,63 @@ class StmlabGui:
             pass
         toast(self.root, "Settings reset. Restart app to apply.", "info")
 
-    def toggle_theme(self):
-        self._dark = not self._dark
+    def apply_theme(self, dark):
+        self._dark = dark
         if HAS_SVTTK:
             try:
-                sv_ttk.set_theme("dark" if self._dark else "light")
+                sv_ttk.set_theme("dark" if dark else "light")
                 return
             except Exception:  # noqa: BLE001
                 pass
-        # Fallback: basic color swap
-        bg = "#1e1e1e" if self._dark else "#f0f0f0"
-        fg = "#e0e0e0" if self._dark else "#000000"
+        # Fallback: full ttk + tk widget theming (no sv_ttk needed)
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except Exception:  # noqa: BLE001
+            pass
+        if dark:
+            bg = "#1e1e1e"; fg = "#e6e6e6"; entry_bg = "#2a2a2a"
+            btn_bg = "#3a3a3a"; sel_bg = "#0078d4"; trough = "#2a2a2a"
+        else:
+            bg = "#f0f0f0"; fg = "#000000"; entry_bg = "#ffffff"
+            btn_bg = "#e1e1e1"; sel_bg = "#0078d4"; trough = "#d9d9d9"
+        style.configure(".", background=bg, foreground=fg, fieldbackground=entry_bg)
+        for name in ("TFrame", "TLabel", "TLabelframe", "TLabelframe.Label",
+                     "TNotebook", "TNotebook.Tab", "TCheckbutton", "TRadiobutton"):
+            style.configure(name, background=bg, foreground=fg)
+        style.configure("TButton", background=btn_bg, foreground=fg)
+        style.configure("TEntry", fieldbackground=entry_bg, foreground=fg)
+        style.configure("TCombobox", fieldbackground=entry_bg, foreground=fg,
+                        background=btn_bg)
+        style.configure("TProgressbar", background=sel_bg, troughcolor=trough)
         self.root.config(bg=bg)
-        toast(self.root, "Theme toggled (limited without sv_ttk).", "info")
+        # Apply to tk.Text / Listbox / Canvas widgets
+        for w in self._all_widgets(self.root):
+            cls = w.__class__.__name__
+            if cls in ("Text", "Listbox", "Canvas"):
+                try:
+                    w.config(bg=entry_bg, fg=fg, insertbackground=fg,
+                             selectbackground=sel_bg, selectforeground="white")
+                except Exception:  # noqa: BLE001
+                    pass
+            elif cls in ("Frame", "LabelFrame", "PanedWindow"):
+                try:
+                    w.config(bg=bg)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _all_widgets(self, root):
+        out = [root]
+        try:
+            for c in root.winfo_children():
+                out.extend(self._all_widgets(c))
+        except Exception:  # noqa: BLE001
+            pass
+        return out
+
+    def toggle_theme(self):
+        self.apply_theme(not self._dark)
+        toast(self.root, "Theme: %s" % ("dark" if self._dark else "light"), "info")
 
     def about(self):
         messagebox.showinfo(
