@@ -194,6 +194,9 @@ class SimTab(BusyMixin):
         self.until_text = tk.StringVar()
         self.trace_var = tk.BooleanVar(value=False)
         self.watches = []
+        self.gdb_port = tk.StringVar(value="1234")
+        self.gdb_stub = None
+        self.gdb_thread = None
 
         self.busy_widgets = []
 
@@ -318,6 +321,12 @@ class SimTab(BusyMixin):
         ttk.Label(r4, text="Breakpoint (addr or symbol):").pack(side="left")
         ttk.Entry(r4, textvariable=self.bp_text, width=24).pack(side="left", padx=4)
         ttk.Button(r4, text="Run to BP", command=self.run_to_bp).pack(side="left", padx=4)
+
+        r6 = ttk.Frame(pp); r6.pack(fill="x", pady=2)
+        ttk.Label(r6, text="GDB port:").pack(side="left")
+        ttk.Entry(r6, textvariable=self.gdb_port, width=6).pack(side="left", padx=4)
+        ttk.Button(r6, text="Start GDB server", command=self.start_gdb).pack(side="left", padx=4)
+        ttk.Button(r6, text="Stop GDB server", command=self.stop_gdb).pack(side="left", padx=4)
 
         r5 = ttk.Frame(pp); r5.pack(fill="x", pady=2)
         ttk.Label(r5, text="Run until UART contains:").pack(side="left")
@@ -528,6 +537,31 @@ class SimTab(BusyMixin):
         canvas = FigureCanvasTkAgg(fig, master=top)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def start_gdb(self):
+        if not self._need_machine():
+            return
+        if self.gdb_stub is not None:
+            messagebox.showinfo("stmlab", "GDB server already running.")
+            return
+        try:
+            port = int(self.gdb_port.get())
+        except ValueError:
+            messagebox.showerror("stmlab", "Port invalid.")
+            return
+        from stmlab.gdbstub import GdbStub
+        stub = GdbStub(self.machine, host="127.0.0.1", port=port)
+        stub.start()
+        self.gdb_stub = stub
+        toast(self.root, "GDB server on 127.0.0.1:%d" % port, "success")
+        messagebox.showinfo("stmlab", "GDB server started on port %d.\n"
+                                     "In gdb: target remote 127.0.0.1:%d" % (port, port))
+
+    def stop_gdb(self):
+        if self.gdb_stub is not None:
+            self.gdb_stub.stop()
+            self.gdb_stub = None
+            toast(self.root, "GDB server stopped.", "info")
 
     def _resolve_addr(self, text):
         text = text.strip()
@@ -1535,9 +1569,12 @@ class StmlabGui:
 
     def on_close(self):
         self.save_settings()
-        # stop serial if connected
         try:
             self.hw_tab.serial_disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.sim_tab.stop_gdb()
         except Exception:  # noqa: BLE001
             pass
         self.root.destroy()
