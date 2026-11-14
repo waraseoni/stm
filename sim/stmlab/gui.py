@@ -8,7 +8,7 @@ import os
 import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -232,6 +232,22 @@ class SimTab(BusyMixin):
         self.uart_box = tk.Text(uart, height=8, state="disabled", wrap="char")
         self.uart_box.pack(fill="both", expand=True)
 
+        regs = ttk.LabelFrame(self.frame, text="Register explorer (double-click to edit)", padding=6)
+        regs.pack(fill="x", pady=6)
+        cols = ("name", "address", "value")
+        self.reg_tree = ttk.Treeview(regs, columns=cols, show="headings", height=7)
+        for c, w in zip(cols, (150, 110, 110)):
+            self.reg_tree.heading(c, text=c.capitalize())
+            self.reg_tree.column(c, width=w, anchor="w")
+        self.reg_tree.pack(fill="x", side="left", expand=True)
+        sb = ttk.Scrollbar(regs, orient="vertical", command=self.reg_tree.yview)
+        sb.pack(side="right", fill="y")
+        self.reg_tree.config(yscrollcommand=sb.set)
+        self.reg_tree.bind("<Double-1>", lambda _e: self.edit_register())
+        rrb = ttk.Frame(regs); rrb.pack(fill="x", pady=2)
+        ttk.Button(rrb, text="Refresh registers", command=self.refresh_registers).pack(side="left")
+        ttk.Button(rrb, text="Edit selected", command=self.edit_register).pack(side="left", padx=4)
+
         pp = ttk.LabelFrame(self.frame, text="Memory / registers (peek & poke)", padding=6)
         pp.pack(fill="x", pady=6)
         r = ttk.Frame(pp); r.pack(fill="x", pady=2)
@@ -258,6 +274,81 @@ class SimTab(BusyMixin):
         ttk.Entry(r3, textvariable=self.rx_text, width=24).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (text)", command=lambda: self.inject_rx(False)).pack(side="left", padx=4)
         ttk.Button(r3, text="Send (hex:)", command=lambda: self.inject_rx(True)).pack(side="left", padx=4)
+
+    def _register_list(self):
+        try:
+            board = get_board(self.board_name.get())
+        except Exception:  # noqa: BLE001
+            return []
+        items = []
+        items.append(("RCC_CR", board.rcc_base + 0x00))
+        cfgr_off = 0x08 if board.rcc_kind == "f4" else 0x04
+        items.append(("RCC_CFGR", board.rcc_base + cfgr_off))
+        if board.rcc_kind == "f4":
+            items.append(("RCC_AHB1ENR", board.rcc_base + 0x30))
+            items.append(("RCC_APB1ENR", board.rcc_base + 0x40))
+            items.append(("RCC_APB2ENR", board.rcc_base + 0x44))
+        else:
+            items.append(("RCC_APB2ENR", board.rcc_base + 0x18))
+            items.append(("RCC_APB1ENR", board.rcc_base + 0x1C))
+        odr_off = 0x14 if board.rcc_kind == "f4" else 0x0C
+        idr_off = 0x10 if board.rcc_kind == "f4" else 0x08
+        for name, base in board.gpio_ports.items():
+            items.append(("GPIO%s_ODR" % name, base + odr_off))
+            items.append(("GPIO%s_IDR" % name, base + idr_off))
+        items.append(("USART_SR", board.usart_base + 0x00))
+        items.append(("USART_DR", board.usart_base + 0x04))
+        items.append(("USART_BRR", board.usart_base + 0x08))
+        items.append(("USART_CR1", board.usart_base + 0x0C))
+        items.append(("TIM_ARR", board.tim_base + 0x2C))
+        items.append(("TIM_CCR1", board.tim_base + 0x34))
+        items.append(("TIM_CNT", board.tim_base + 0x24))
+        items.append(("SysTick_CTRL", 0xE000E010))
+        items.append(("SysTick_LOAD", 0xE000E014))
+        items.append(("SysTick_VAL", 0xE000E018))
+        items.append(("NVIC_ISER0", 0xE000E100))
+        items.append(("NVIC_ISER1", 0xE000E104))
+        items.append(("SCB_VTOR", 0xE000ED08))
+        return items
+
+    def refresh_registers(self):
+        for item in self.reg_tree.get_children():
+            self.reg_tree.delete(item)
+        if self.machine is None:
+            return
+        for name, addr in self._register_list():
+            try:
+                val = self.machine.peek(addr, 4)
+            except Exception:  # noqa: BLE001
+                val = 0
+            self.reg_tree.insert("", "end", values=(name, "0x%08x" % addr, "0x%08x" % val))
+
+    def edit_register(self):
+        if not self._need_machine():
+            return
+        sel = self.reg_tree.selection()
+        if not sel:
+            messagebox.showinfo("stmlab", "Pehle ek register select karo.")
+            return
+        vals = self.reg_tree.item(sel[0])["values"]
+        name, addr_s, cur = vals
+        addr = int(addr_s, 0)
+        new = simpledialog.askstring("Edit register", "%s @ 0x%08x" % (name, addr),
+                                    initialvalue=cur)
+        if new is None:
+            return
+        try:
+            value = int(new, 0)
+        except ValueError:
+            messagebox.showerror("stmlab", "Value invalid (use 0x..).")
+            return
+        try:
+            self.machine.poke(addr, 4, value)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("stmlab", str(exc))
+            return
+        self.refresh_registers()
+        toast(self.root, "%s updated." % name, "success")
 
     def browse_elf(self):
         path = filedialog.askopenfilename(title="Select firmware ELF",
@@ -300,6 +391,7 @@ class SimTab(BusyMixin):
         self.machine = m
         self.refresh_status()
         self.refresh_uart()
+        self.refresh_registers()
         toast(self.root, "Firmware loaded.", "success")
 
     def reset_machine(self):
@@ -343,6 +435,7 @@ class SimTab(BusyMixin):
     def _after_run(self):
         self.refresh_status()
         self.refresh_uart()
+        self.refresh_registers()
 
     def refresh_status(self):
         if self.machine is None:
