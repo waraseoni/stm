@@ -262,6 +262,7 @@ class SimTab(BusyMixin):
         ttk.Label(r, textvariable=self.peek_result).pack(side="left", padx=8)
         ttk.Button(r, text="Dump 64B", command=self.dump_range).pack(side="left", padx=4)
         ttk.Button(r, text="Plot LED", command=self.plot_led).pack(side="left", padx=4)
+        ttk.Button(r, text="Memory Editor", command=self.memory_editor).pack(side="left", padx=4)
 
         r2 = ttk.Frame(pp); r2.pack(fill="x", pady=2)
         ttk.Label(r2, text="Poke addr:").pack(side="left")
@@ -352,6 +353,61 @@ class SimTab(BusyMixin):
                 toast(self.root, "Text not found (ran %d instr)" % steps, "warning")
 
         self.run_busy(work, on_done=done)
+
+    def memory_editor(self):
+        if not self._need_machine():
+            return
+        try:
+            base = self._resolve_addr(self.peek_addr.get())
+        except ValueError:
+            base = 0x20000000
+        top = tk.Toplevel(self.root)
+        top.title("Memory editor @ 0x%08x" % base)
+        frame = ttk.Frame(top, padding=8)
+        frame.pack(fill="both", expand=True)
+        addr_var = tk.StringVar(value="0x%08x" % base)
+        ttk.Label(frame, text="Base address:").pack(side="left")
+        ttk.Entry(frame, textvariable=addr_var, width=12).pack(side="left", padx=4)
+        entries = []
+
+        def load():
+            for e in entries:
+                e.destroy()
+            entries.clear()
+            try:
+                b = int(addr_var.get(), 0)
+            except ValueError:
+                messagebox.showerror("stmlab", "Invalid address.")
+                return
+            for row in range(8):
+                a = b + row * 16
+                ttk.Label(frame, text="0x%08x" % a, font=("Consolas", 9)).pack(anchor="w")
+                erow = ttk.Frame(frame)
+                erow.pack(anchor="w")
+                for i in range(16):
+                    try:
+                        v = self.machine.peek(a + i, 1)
+                    except Exception:  # noqa: BLE001
+                        v = 0
+                    e = ttk.Entry(erow, width=3)
+                    e.insert(0, "%02x" % v)
+                    e.pack(side="left")
+                    entries.append((a + i, e))
+
+        def save():
+            for addr, e in entries:
+                try:
+                    v = int(e.get(), 16)
+                except ValueError:
+                    messagebox.showerror("stmlab", "Bad byte at 0x%08x" % addr)
+                    return
+                self.machine.poke(addr, 1, v)
+            toast(self.root, "Memory written.", "success")
+            self.refresh_registers()
+
+        ttk.Button(frame, text="Load", command=load).pack(side="left", padx=4)
+        ttk.Button(frame, text="Save", command=save).pack(side="left", padx=4)
+        load()
 
     def _resolve_addr(self, text):
         text = text.strip()
