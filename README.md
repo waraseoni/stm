@@ -136,6 +136,7 @@ Commit message me `stm8:` / `stm32:` prefix rakho — history me filter karna ea
 - [x] Toolchains installed (SDCC 4.5.0, ARM GCC 14.2.1, CMake 4.4.4, Ninja 1.13.2, OpenOCD 0.12.0-7, make 4.4.1) + versions doc me likhe
 - [x] STM32 builds verified (01-08) + simulator runs real ELF (04-uart-printf prints UART, 05-ringbuffer RX IRQ works)
 - [x] STM8 builds verified (01-05)
+- [x] Implementation plan for all audit findings: `docs/07-implementation-plan.md`
 - [ ] Board par pehla flash + UART output (hardware needed)
 - [ ] Remaining Phase 1/2 exercises (templates provided in docs/06-exercise-templates.md)
 - [ ] Simulator verification with real ELF builds (ARM GCC needed)
